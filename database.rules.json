@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "live_locations": {
+      "$userId": {
+        ".read": "auth != null && (auth.uid === $userId || data.child('guardianAccess').child(auth.uid).val() === true)",
+        ".write": "auth != null && auth.uid === $userId",
+        ".validate": "newData.hasChildren(['lat', 'lng', 'accuracy', 'speed', 'heading', 'updatedAt', 'isEmergencyActive', 'source', 'guardianIds', 'guardianAccess'])"
+      }
+    }
+  }
+}
