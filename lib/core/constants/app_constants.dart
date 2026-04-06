@@ -7,6 +7,10 @@ class AppConstants {
   static const double buttonHeight = 56;
   static const double sosButtonSize = 220;
   static const int locationUpdateIntervalSeconds = 15;
+  static const int asyncOperationTimeoutSeconds = 20;
+  static const int routeLoadingTimeoutSeconds = 8;
+  static const int maxCriticalWriteAttempts = 3;
+  static const int liveLocationDistanceFilterMeters = 5;
   static const int lowBatteryWarningFallback = 15;
   static const int lowBatteryCriticalFallback = 5;
   static const int nightMonitoringStartHour = 22;
@@ -18,6 +22,13 @@ class AppConstants {
   static const String activeAlertIdKey = 'active_alert_id';
   static const String lastNightMonitoringAlertSessionKey =
       'last_night_monitoring_alert_session';
+  static const String activeGeofenceZoneIdKey = 'active_geofence_zone_id';
+  static const String alertsNotificationChannelId = 'safely_alerts';
+  static const String alertsNotificationChannelName = 'Safely Alerts';
+  static const String alertsNotificationChannelDescription =
+      'Critical guardian alerts for Safely.';
+  static const String flutterNotificationClickAction =
+      'FLUTTER_NOTIFICATION_CLICK';
   static const String openStreetMapTileUrl =
       'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   static const String openStreetMapCopyrightUrl =

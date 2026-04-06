@@ -8,6 +8,8 @@ import '../core/services/battery_service.dart';
 import '../core/services/firebase_storage_service.dart';
 import '../core/services/local_notifications_service.dart';
 import '../core/services/preferences_service.dart';
+import '../core/utils/app_logger.dart';
+import '../core/utils/retry_helper.dart';
 import '../models/activity_log.dart';
 import '../models/app_enums.dart';
 import '../models/geofence_zone.dart';
@@ -169,6 +171,7 @@ class DefaultSafetyRepository implements SafetyRepository {
     final Position position = await _locationRepository.getCurrentPosition();
     final int batteryLevel = await _batteryService.getBatteryLevel();
     final String alertId = DateTime.now().microsecondsSinceEpoch.toString();
+    final DateTime now = DateTime.now();
 
     final SafetyAlert alert = SafetyAlert(
       id: alertId,
@@ -178,7 +181,7 @@ class DefaultSafetyRepository implements SafetyRepository {
       status: AlertStatus.active,
       title: 'SOS activated',
       description: '${profile.name} has triggered an emergency alert.',
-      timestamp: DateTime.now(),
+      timestamp: now,
       locationLat: position.latitude,
       locationLng: position.longitude,
       batteryLevel: batteryLevel,
@@ -198,22 +201,31 @@ class DefaultSafetyRepository implements SafetyRepository {
       uid: profile.id,
       batteryLevel: batteryLevel,
     );
-    await _profileRepository.updateLastLocationSync(profile.id, DateTime.now());
+    await _profileRepository.updateLastLocationSync(profile.id, now);
     await _alertRepository.createLog(
       ActivityLog(
         id: '${alertId}_log',
         userId: profile.id,
         eventType: LogEventType.sosTriggered,
         message: 'SOS started and guardians notified.',
-        timestamp: DateTime.now(),
+        timestamp: now,
         metadata: <String, dynamic>{'alertId': alertId},
       ),
     );
 
     if (settings.audioRecordingEnabled) {
-      final String? recordingPath = await _audioRecordingService
-          .startEmergencyRecording(userId: profile.id, alertId: alertId);
-      _isRecordingActive = recordingPath != null;
+      try {
+        final String? recordingPath = await _audioRecordingService
+            .startEmergencyRecording(userId: profile.id, alertId: alertId);
+        _isRecordingActive = recordingPath != null;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Emergency audio recording could not start',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        _isRecordingActive = false;
+      }
     }
 
     _activeAlertId = alertId;
@@ -223,6 +235,7 @@ class DefaultSafetyRepository implements SafetyRepository {
       guardianIds: profile.guardianIds,
       source: 'sos',
       isEmergency: true,
+      initialPosition: position,
     );
     _emitRuntimeState();
 
@@ -246,13 +259,27 @@ class DefaultSafetyRepository implements SafetyRepository {
 
     String? audioUrl;
     if (_isRecordingActive) {
-      final String? filePath = await _audioRecordingService.stopRecording();
       _isRecordingActive = false;
-      if (filePath != null) {
-        audioUrl = await _storageService.uploadEmergencyAudio(
-          userId: profile.id,
-          alertId: alertId,
-          filePath: filePath,
+      try {
+        final String? filePath = await _audioRecordingService.stopRecording();
+        if (filePath != null) {
+          audioUrl = await RetryHelper.run<String>(
+            label: 'upload emergency audio',
+            attempts: AppConstants.maxCriticalWriteAttempts,
+            operation: () {
+              return _storageService.uploadEmergencyAudio(
+                userId: profile.id,
+                alertId: alertId,
+                filePath: filePath,
+              );
+            },
+          );
+        }
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Emergency audio upload failed',
+          error: error,
+          stackTrace: stackTrace,
         );
       }
     }
@@ -334,13 +361,14 @@ class DefaultSafetyRepository implements SafetyRepository {
   }) async {
     final Position position = await _locationRepository.getCurrentPosition();
     final String id = DateTime.now().microsecondsSinceEpoch.toString();
+    final DateTime now = DateTime.now();
 
     await _alertRepository.createCheckIn(
       SafetyCheckIn(
         id: id,
         userId: profile.id,
         type: CheckInType.manual,
-        timestamp: DateTime.now(),
+        timestamp: now,
         batteryLevel: batteryLevel,
         locationLat: position.latitude,
         locationLng: position.longitude,
@@ -357,7 +385,7 @@ class DefaultSafetyRepository implements SafetyRepository {
         status: AlertStatus.resolved,
         title: 'Manual check-in',
         description: '${profile.name} checked in as safe.',
-        timestamp: DateTime.now(),
+        timestamp: now,
         locationLat: position.latitude,
         locationLng: position.longitude,
         batteryLevel: batteryLevel,
@@ -375,10 +403,11 @@ class DefaultSafetyRepository implements SafetyRepository {
         userId: profile.id,
         eventType: LogEventType.checkIn,
         message: 'Manual safety check-in completed.',
-        timestamp: DateTime.now(),
+        timestamp: now,
         metadata: <String, dynamic>{'batteryLevel': batteryLevel},
       ),
     );
+    await _profileRepository.updateLastLocationSync(profile.id, now);
   }
 
   @override
@@ -406,7 +435,18 @@ class DefaultSafetyRepository implements SafetyRepository {
       return null;
     }
 
-    final Position? position = await _locationRepository.getLastKnownPosition();
+    Position? position = await _locationRepository.getLastKnownPosition();
+    if (position == null) {
+      try {
+        position = await _locationRepository.getCurrentPosition();
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Battery alert could not refresh location',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
     final SafetyAlert alert = SafetyAlert(
       id: 'battery_${DateTime.now().microsecondsSinceEpoch}',
       userId: profile.id,
@@ -454,6 +494,7 @@ class DefaultSafetyRepository implements SafetyRepository {
     required UserSettings settings,
   }) async {
     if (!settings.geofencingEnabled || geofenceConfig.zones.isEmpty) {
+      await _preferencesService.setActiveGeofenceZoneId(null);
       return null;
     }
 
@@ -464,47 +505,54 @@ class DefaultSafetyRepository implements SafetyRepository {
       type: GeofenceType.unsafe,
     );
 
-    if (unsafeZone != null) {
-      final SafetyAlert alert = SafetyAlert(
-        id: 'geofence_${DateTime.now().microsecondsSinceEpoch}',
-        userId: profile.id,
-        guardianIds: profile.guardianIds,
-        type: AlertType.geofence,
-        status: AlertStatus.active,
-        title: 'Entered unsafe zone',
-        description: '${profile.name} entered ${unsafeZone.name}.',
-        timestamp: DateTime.now(),
-        locationLat: position.latitude,
-        locationLng: position.longitude,
-        batteryLevel: await _batteryService.getBatteryLevel(),
-        audioUrl: null,
-        acknowledgedBy: null,
-        acknowledgedAt: null,
-        canceledByUser: false,
-        resolvedAt: null,
-      );
-      await _alertRepository.createAlert(alert);
-      await _alertRepository.createLog(
-        ActivityLog(
-          id: '${alert.id}_log',
-          userId: profile.id,
-          eventType: LogEventType.geofenceEntered,
-          message: 'Unsafe zone entered: ${unsafeZone.name}.',
-          timestamp: DateTime.now(),
-          metadata: <String, dynamic>{
-            'zoneId': unsafeZone.id,
-            'zoneName': unsafeZone.name,
-          },
-        ),
-      );
-      await _localNotificationsService.showLocalWarning(
-        title: 'Unsafe zone detected',
-        body: 'Guardians can see this location warning.',
-      );
-      return alert;
+    if (unsafeZone == null) {
+      await _preferencesService.setActiveGeofenceZoneId(null);
+      return null;
     }
 
-    return null;
+    if (_preferencesService.activeGeofenceZoneId == unsafeZone.id) {
+      return null;
+    }
+
+    final DateTime now = DateTime.now();
+    final SafetyAlert alert = SafetyAlert(
+      id: 'geofence_${now.microsecondsSinceEpoch}',
+      userId: profile.id,
+      guardianIds: profile.guardianIds,
+      type: AlertType.geofence,
+      status: AlertStatus.active,
+      title: 'Entered unsafe zone',
+      description: '${profile.name} entered ${unsafeZone.name}.',
+      timestamp: now,
+      locationLat: position.latitude,
+      locationLng: position.longitude,
+      batteryLevel: await _batteryService.getBatteryLevel(),
+      audioUrl: null,
+      acknowledgedBy: null,
+      acknowledgedAt: null,
+      canceledByUser: false,
+      resolvedAt: null,
+    );
+    await _alertRepository.createAlert(alert);
+    await _alertRepository.createLog(
+      ActivityLog(
+        id: '${alert.id}_log',
+        userId: profile.id,
+        eventType: LogEventType.geofenceEntered,
+        message: 'Unsafe zone entered: ${unsafeZone.name}.',
+        timestamp: now,
+        metadata: <String, dynamic>{
+          'zoneId': unsafeZone.id,
+          'zoneName': unsafeZone.name,
+        },
+      ),
+    );
+    await _localNotificationsService.showLocalWarning(
+      title: 'Unsafe zone detected',
+      body: 'Guardians can see this location warning.',
+    );
+    await _preferencesService.setActiveGeofenceZoneId(unsafeZone.id);
+    return alert;
   }
 
   GeofenceZone? _zoneContainingPoint({
@@ -615,25 +663,37 @@ class DefaultSafetyRepository implements SafetyRepository {
     required List<String> guardianIds,
     required String source,
     required bool isEmergency,
+    Position? initialPosition,
   }) async {
     await _liveLocationSubscription?.cancel();
+    final Position firstPosition =
+        initialPosition ?? await _locationRepository.getCurrentPosition();
+    await _publishLiveLocation(
+      userId: userId,
+      guardianIds: guardianIds,
+      source: source,
+      isEmergency: isEmergency,
+      position: firstPosition,
+    );
+
     _liveLocationSubscription = _locationRepository.watchLivePositions().listen(
       (Position position) {
-        _locationRepository.updateLiveLocation(
-          LiveLocation(
+        unawaited(
+          _publishLiveLocation(
             userId: userId,
             guardianIds: guardianIds,
-            lat: position.latitude,
-            lng: position.longitude,
-            accuracy: position.accuracy,
-            speed: position.speed,
-            heading: position.heading,
-            updatedAt: DateTime.now(),
-            isEmergencyActive: isEmergency,
             source: source,
+            isEmergency: isEmergency,
+            position: position,
           ),
         );
-        _profileRepository.updateLastLocationSync(userId, DateTime.now());
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        AppLogger.error(
+          'Live location stream failed',
+          error: error,
+          stackTrace: stackTrace,
+        );
       },
     );
   }
@@ -642,6 +702,31 @@ class DefaultSafetyRepository implements SafetyRepository {
     await _liveLocationSubscription?.cancel();
     _liveLocationSubscription = null;
     await _locationRepository.clearLiveLocation(userId);
+  }
+
+  Future<void> _publishLiveLocation({
+    required String userId,
+    required List<String> guardianIds,
+    required String source,
+    required bool isEmergency,
+    required Position position,
+  }) async {
+    final DateTime now = DateTime.now();
+    await _locationRepository.updateLiveLocation(
+      LiveLocation(
+        userId: userId,
+        guardianIds: guardianIds,
+        lat: position.latitude,
+        lng: position.longitude,
+        accuracy: position.accuracy,
+        speed: position.speed,
+        heading: position.heading,
+        updatedAt: now,
+        isEmergencyActive: isEmergency,
+        source: source,
+      ),
+    );
+    await _profileRepository.updateLastLocationSync(userId, now);
   }
 
   void _emitRuntimeState() {

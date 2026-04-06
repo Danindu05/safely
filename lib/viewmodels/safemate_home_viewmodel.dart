@@ -57,14 +57,12 @@ class SafemateHomeViewModel extends BaseViewModel {
   }
 
   Future<void> triggerSos() async {
-    final UserSettings? settings = _settings;
-    if (settings == null) {
-      setError(StateError('Safety settings are still loading.'));
-      return;
-    }
+    final UserSettings settings =
+        _settings ?? UserSettings.defaults(_profile.id);
 
     await guard<void>(
       () => _safetyRepository.triggerSos(profile: _profile, settings: settings),
+      operationName: 'trigger SOS',
     );
   }
 
@@ -74,8 +72,11 @@ class SafemateHomeViewModel extends BaseViewModel {
         profile: _profile,
         batteryLevel: batteryLevel,
       ),
+      operationName: 'send manual check-in',
     );
-    setInfo('Manual check-in sent.');
+    if (errorMessage == null) {
+      setInfo('Manual check-in sent.');
+    }
   }
 
   Future<void> toggleManualLiveSharing() async {
@@ -84,7 +85,7 @@ class SafemateHomeViewModel extends BaseViewModel {
         return _safetyRepository.stopManualLiveSharing(_profile.id);
       }
       return _safetyRepository.startManualLiveSharing(profile: _profile);
-    });
+    }, operationName: 'toggle manual live sharing');
   }
 
   @override

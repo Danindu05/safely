@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/constants/app_constants.dart';
 import '../core/services/firestore_service.dart';
+import '../core/utils/app_logger.dart';
+import '../core/utils/retry_helper.dart';
 import '../models/geofence_zone.dart';
 import '../models/medical_profile.dart';
 import '../models/user_profile.dart';
@@ -15,6 +17,12 @@ abstract class ProfileRepository {
   Stream<List<UserProfile>> watchLinkedSafemates(String uid);
 
   Future<void> saveUserProfile(UserProfile profile);
+
+  Future<void> ensureAccountScaffold({
+    required String uid,
+    required String name,
+    required String email,
+  });
 
   Future<void> setRole({
     required String uid,
@@ -74,61 +82,132 @@ class FirebaseProfileRepository implements ProfileRepository {
       if (!snapshot.exists || data == null) {
         return null;
       }
-      return UserProfile.fromMap(data, documentId: snapshot.id);
+      try {
+        return UserProfile.fromMap(data, documentId: snapshot.id);
+      } on FormatException {
+        AppLogger.warning(
+          'User profile $uid is present but role setup is incomplete.',
+        );
+        return null;
+      }
     });
   }
 
   @override
   Stream<List<UserProfile>> watchLinkedGuardians(String uid) {
-    return watchUserProfile(uid).asyncExpand((UserProfile? profile) {
-      if (profile == null || profile.guardianIds.isEmpty) {
-        return Stream<List<UserProfile>>.value(const <UserProfile>[]);
-      }
-
-      return _firestoreService.users
-          .where(
-            FieldPath.documentId,
-            whereIn: profile.guardianIds.take(10).toList(),
-          )
-          .snapshots()
-          .map((snapshot) {
-            return snapshot.docs
-                .map(
-                  (doc) => UserProfile.fromMap(doc.data(), documentId: doc.id),
-                )
-                .toList(growable: false);
-          });
-    });
+    return _firestoreService.users
+        .where(FirestoreFields.safemateIds, arrayContains: uid)
+        .snapshots()
+        .map(_mapUserProfiles);
   }
 
   @override
   Stream<List<UserProfile>> watchLinkedSafemates(String uid) {
-    return watchUserProfile(uid).asyncExpand((UserProfile? profile) {
-      if (profile == null || profile.safemateIds.isEmpty) {
-        return Stream<List<UserProfile>>.value(const <UserProfile>[]);
-      }
-
-      return _firestoreService.users
-          .where(
-            FieldPath.documentId,
-            whereIn: profile.safemateIds.take(10).toList(),
-          )
-          .snapshots()
-          .map((snapshot) {
-            return snapshot.docs
-                .map(
-                  (doc) => UserProfile.fromMap(doc.data(), documentId: doc.id),
-                )
-                .toList(growable: false);
-          });
-    });
+    return _firestoreService.users
+        .where(FirestoreFields.guardianIds, arrayContains: uid)
+        .snapshots()
+        .map(_mapUserProfiles);
   }
 
   @override
   Future<void> saveUserProfile(UserProfile profile) {
-    return _firestoreService.users
-        .doc(profile.id)
-        .set(profile.toMap(), SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'save user profile',
+      operation: () {
+        return _firestoreService.users
+            .doc(profile.id)
+            .set(profile.toMap(), SetOptions(merge: true));
+      },
+      attempts: AppConstants.maxCriticalWriteAttempts,
+    );
+  }
+
+  @override
+  Future<void> ensureAccountScaffold({
+    required String uid,
+    required String name,
+    required String email,
+  }) {
+    final DateTime now = DateTime.now();
+    final UserSettings defaultSettings = UserSettings.defaults(uid);
+    final MedicalProfile emptyProfile = MedicalProfile.empty(uid);
+
+    return RetryHelper.run<void>(
+      label: 'ensure account scaffold',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () async {
+        await _firestoreService.runTransaction((Transaction transaction) async {
+          final DocumentReference<Map<String, dynamic>> userRef =
+              _firestoreService.users.doc(uid);
+          final DocumentReference<Map<String, dynamic>> settingsRef =
+              _firestoreService.settings.doc(uid);
+          final DocumentReference<Map<String, dynamic>> medicalRef =
+              _firestoreService.medicalProfiles.doc(uid);
+
+          final DocumentSnapshot<Map<String, dynamic>> userSnapshot =
+              await transaction.get(userRef);
+          final Map<String, dynamic> existingUser =
+              userSnapshot.data() ?? const <String, dynamic>{};
+
+          final String existingName =
+              (existingUser[FirestoreFields.name] as String?)?.trim() ?? '';
+          final String existingEmail =
+              (existingUser[FirestoreFields.email] as String?)?.trim() ?? '';
+
+          transaction.set(userRef, <String, Object?>{
+            FirestoreFields.id: uid,
+            FirestoreFields.name: existingName.isNotEmpty
+                ? existingName
+                : name.trim(),
+            FirestoreFields.email: existingEmail.isNotEmpty
+                ? existingEmail
+                : email.trim(),
+            FirestoreFields.guardianIds:
+                existingUser[FirestoreFields.guardianIds] as List<dynamic>? ??
+                const <String>[],
+            FirestoreFields.safemateIds:
+                existingUser[FirestoreFields.safemateIds] as List<dynamic>? ??
+                const <String>[],
+            FirestoreFields.createdAt:
+                existingUser[FirestoreFields.createdAt] ??
+                Timestamp.fromDate(now),
+            FirestoreFields.updatedAt: Timestamp.fromDate(now),
+            FirestoreFields.lastSeenAt:
+                existingUser[FirestoreFields.lastSeenAt] ??
+                Timestamp.fromDate(now),
+            FirestoreFields.lastLocationSyncAt:
+                existingUser[FirestoreFields.lastLocationSyncAt],
+            FirestoreFields.isEmergencyActive:
+                existingUser[FirestoreFields.isEmergencyActive] as bool? ??
+                false,
+            FirestoreFields.batteryLevel:
+                existingUser[FirestoreFields.batteryLevel] as num?,
+            FirestoreFields.fcmToken:
+                existingUser[FirestoreFields.fcmToken] as String?,
+            FirestoreFields.emergencyContactName:
+                (existingUser[FirestoreFields.emergencyContactName] as String?)
+                    ?.trim() ??
+                '',
+            FirestoreFields.emergencyContactPhone:
+                (existingUser[FirestoreFields.emergencyContactPhone] as String?)
+                    ?.trim() ??
+                '',
+          }, SetOptions(merge: true));
+
+          final DocumentSnapshot<Map<String, dynamic>> settingsSnapshot =
+              await transaction.get(settingsRef);
+          if (!settingsSnapshot.exists) {
+            transaction.set(settingsRef, defaultSettings.toMap());
+          }
+
+          final DocumentSnapshot<Map<String, dynamic>> medicalSnapshot =
+              await transaction.get(medicalRef);
+          if (!medicalSnapshot.exists) {
+            transaction.set(medicalRef, emptyProfile.toMap());
+          }
+        });
+      },
+    );
   }
 
   @override
@@ -139,31 +218,67 @@ class FirebaseProfileRepository implements ProfileRepository {
     required String roleValue,
   }) {
     final DateTime now = DateTime.now();
-    return _firestoreService.users.doc(uid).set(<String, Object?>{
-      FirestoreFields.id: uid,
-      FirestoreFields.name: name.trim(),
-      FirestoreFields.email: email.trim(),
-      FirestoreFields.role: roleValue,
-      FirestoreFields.guardianIds: const <String>[],
-      FirestoreFields.safemateIds: const <String>[],
-      FirestoreFields.createdAt: Timestamp.fromDate(now),
-      FirestoreFields.updatedAt: Timestamp.fromDate(now),
-      FirestoreFields.lastSeenAt: Timestamp.fromDate(now),
-      FirestoreFields.lastLocationSyncAt: null,
-      FirestoreFields.isEmergencyActive: false,
-      FirestoreFields.batteryLevel: null,
-      FirestoreFields.fcmToken: null,
-      FirestoreFields.emergencyContactName: '',
-      FirestoreFields.emergencyContactPhone: '',
-    }, SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'set role',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () async {
+        await _firestoreService.runTransaction((Transaction transaction) async {
+          final DocumentReference<Map<String, dynamic>> userRef =
+              _firestoreService.users.doc(uid);
+          final DocumentSnapshot<Map<String, dynamic>> snapshot =
+              await transaction.get(userRef);
+          final Map<String, dynamic> existing =
+              snapshot.data() ?? const <String, dynamic>{};
+
+          transaction.set(userRef, <String, Object?>{
+            FirestoreFields.id: uid,
+            FirestoreFields.name: name.trim(),
+            FirestoreFields.email: email.trim(),
+            FirestoreFields.role: roleValue,
+            FirestoreFields.guardianIds:
+                existing[FirestoreFields.guardianIds] as List<dynamic>? ??
+                const <String>[],
+            FirestoreFields.safemateIds:
+                existing[FirestoreFields.safemateIds] as List<dynamic>? ??
+                const <String>[],
+            FirestoreFields.createdAt:
+                existing[FirestoreFields.createdAt] ?? Timestamp.fromDate(now),
+            FirestoreFields.updatedAt: Timestamp.fromDate(now),
+            FirestoreFields.lastSeenAt: Timestamp.fromDate(now),
+            FirestoreFields.lastLocationSyncAt:
+                existing[FirestoreFields.lastLocationSyncAt],
+            FirestoreFields.isEmergencyActive:
+                existing[FirestoreFields.isEmergencyActive] as bool? ?? false,
+            FirestoreFields.batteryLevel:
+                existing[FirestoreFields.batteryLevel] as num?,
+            FirestoreFields.fcmToken:
+                existing[FirestoreFields.fcmToken] as String?,
+            FirestoreFields.emergencyContactName:
+                (existing[FirestoreFields.emergencyContactName] as String?)
+                    ?.trim() ??
+                '',
+            FirestoreFields.emergencyContactPhone:
+                (existing[FirestoreFields.emergencyContactPhone] as String?)
+                    ?.trim() ??
+                '',
+          }, SetOptions(merge: true));
+        });
+      },
+    );
   }
 
   @override
   Future<void> updateFcmToken(String uid, String? token) {
-    return _firestoreService.users.doc(uid).set(<String, Object?>{
-      FirestoreFields.fcmToken: token,
-      FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
-    }, SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'update FCM token',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _firestoreService.users.doc(uid).set(<String, Object?>{
+          FirestoreFields.fcmToken: token,
+          FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
+        }, SetOptions(merge: true));
+      },
+    );
   }
 
   @override
@@ -171,25 +286,43 @@ class FirebaseProfileRepository implements ProfileRepository {
     required String uid,
     required int batteryLevel,
   }) {
-    return _firestoreService.users.doc(uid).set(<String, Object?>{
-      FirestoreFields.batteryLevel: batteryLevel,
-      FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
-    }, SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'update battery level',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _firestoreService.users.doc(uid).set(<String, Object?>{
+          FirestoreFields.batteryLevel: batteryLevel,
+          FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
+        }, SetOptions(merge: true));
+      },
+    );
   }
 
   @override
   Future<void> updateLastSeen(String uid) {
-    return _firestoreService.users.doc(uid).set(<String, Object?>{
-      FirestoreFields.lastSeenAt: Timestamp.fromDate(DateTime.now()),
-    }, SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'update last seen',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _firestoreService.users.doc(uid).set(<String, Object?>{
+          FirestoreFields.lastSeenAt: Timestamp.fromDate(DateTime.now()),
+        }, SetOptions(merge: true));
+      },
+    );
   }
 
   @override
   Future<void> updateLastLocationSync(String uid, DateTime timestamp) {
-    return _firestoreService.users.doc(uid).set(<String, Object?>{
-      FirestoreFields.lastLocationSyncAt: Timestamp.fromDate(timestamp),
-      FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
-    }, SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'update last location sync',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _firestoreService.users.doc(uid).set(<String, Object?>{
+          FirestoreFields.lastLocationSyncAt: Timestamp.fromDate(timestamp),
+          FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
+        }, SetOptions(merge: true));
+      },
+    );
   }
 
   @override
@@ -197,10 +330,16 @@ class FirebaseProfileRepository implements ProfileRepository {
     required String uid,
     required bool isEmergencyActive,
   }) {
-    return _firestoreService.users.doc(uid).set(<String, Object?>{
-      FirestoreFields.isEmergencyActive: isEmergencyActive,
-      FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
-    }, SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'set emergency state',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _firestoreService.users.doc(uid).set(<String, Object?>{
+          FirestoreFields.isEmergencyActive: isEmergencyActive,
+          FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
+        }, SetOptions(merge: true));
+      },
+    );
   }
 
   @override
@@ -212,52 +351,48 @@ class FirebaseProfileRepository implements ProfileRepository {
       throw StateError('A Safemate cannot link themselves as a guardian.');
     }
 
-    return _firestoreService.runTransaction((Transaction transaction) async {
-      final DocumentReference<Map<String, dynamic>> safemateRef =
-          _firestoreService.users.doc(safemateId);
-      final DocumentReference<Map<String, dynamic>> guardianRef =
-          _firestoreService.users.doc(guardianId);
+    return RetryHelper.run<void>(
+      label: 'link guardian',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () async {
+        await _firestoreService.runTransaction((Transaction transaction) async {
+          final DocumentReference<Map<String, dynamic>> safemateRef =
+              _firestoreService.users.doc(safemateId);
+          final DocumentReference<Map<String, dynamic>> guardianRef =
+              _firestoreService.users.doc(guardianId);
 
-      final DocumentSnapshot<Map<String, dynamic>> safemateSnapshot =
-          await transaction.get(safemateRef);
-      final DocumentSnapshot<Map<String, dynamic>> guardianSnapshot =
-          await transaction.get(guardianRef);
+          final DocumentSnapshot<Map<String, dynamic>> safemateSnapshot =
+              await transaction.get(safemateRef);
+          final DocumentSnapshot<Map<String, dynamic>> guardianSnapshot =
+              await transaction.get(guardianRef);
 
-      if (!guardianSnapshot.exists) {
-        throw StateError('Guardian ID was not found.');
-      }
-      if ((guardianSnapshot.data()?[FirestoreFields.role] as String?) !=
-          'guardian') {
-        throw StateError('That account is not registered as a guardian.');
-      }
+          if (!safemateSnapshot.exists) {
+            throw StateError('Your Safemate profile is not ready yet.');
+          }
+          if (!guardianSnapshot.exists) {
+            throw StateError('Guardian ID was not found.');
+          }
+          if ((guardianSnapshot.data()?[FirestoreFields.role] as String?) !=
+              'guardian') {
+            throw StateError('That account is not registered as a guardian.');
+          }
 
-      final List<String> guardianIds =
-          (safemateSnapshot.data()?[FirestoreFields.guardianIds]
-                      as List<dynamic>? ??
-                  const <dynamic>[])
-              .whereType<String>()
-              .toSet()
-              .toList();
-      final List<String> safemateIds =
-          (guardianSnapshot.data()?[FirestoreFields.safemateIds]
-                      as List<dynamic>? ??
-                  const <dynamic>[])
-              .whereType<String>()
-              .toSet()
-              .toList();
-
-      guardianIds.add(guardianId);
-      safemateIds.add(safemateId);
-
-      transaction.set(safemateRef, <String, Object?>{
-        FirestoreFields.guardianIds: guardianIds,
-        FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
-      }, SetOptions(merge: true));
-      transaction.set(guardianRef, <String, Object?>{
-        FirestoreFields.safemateIds: safemateIds,
-        FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
-      }, SetOptions(merge: true));
-    });
+          final Timestamp now = Timestamp.fromDate(DateTime.now());
+          transaction.update(safemateRef, <String, Object?>{
+            FirestoreFields.guardianIds: FieldValue.arrayUnion(<String>[
+              guardianId,
+            ]),
+            FirestoreFields.updatedAt: now,
+          });
+          transaction.update(guardianRef, <String, Object?>{
+            FirestoreFields.safemateIds: FieldValue.arrayUnion(<String>[
+              safemateId,
+            ]),
+            FirestoreFields.updatedAt: now,
+          });
+        });
+      },
+    );
   }
 
   @override
@@ -265,42 +400,32 @@ class FirebaseProfileRepository implements ProfileRepository {
     required String safemateId,
     required String guardianId,
   }) {
-    return _firestoreService.runTransaction((Transaction transaction) async {
-      final DocumentReference<Map<String, dynamic>> safemateRef =
-          _firestoreService.users.doc(safemateId);
-      final DocumentReference<Map<String, dynamic>> guardianRef =
-          _firestoreService.users.doc(guardianId);
+    return RetryHelper.run<void>(
+      label: 'unlink guardian',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () async {
+        await _firestoreService.runTransaction((Transaction transaction) async {
+          final DocumentReference<Map<String, dynamic>> safemateRef =
+              _firestoreService.users.doc(safemateId);
+          final DocumentReference<Map<String, dynamic>> guardianRef =
+              _firestoreService.users.doc(guardianId);
+          final Timestamp now = Timestamp.fromDate(DateTime.now());
 
-      final DocumentSnapshot<Map<String, dynamic>> safemateSnapshot =
-          await transaction.get(safemateRef);
-      final DocumentSnapshot<Map<String, dynamic>> guardianSnapshot =
-          await transaction.get(guardianRef);
-
-      final List<String> guardianIds =
-          (safemateSnapshot.data()?[FirestoreFields.guardianIds]
-                      as List<dynamic>? ??
-                  const <dynamic>[])
-              .whereType<String>()
-              .toList();
-      final List<String> safemateIds =
-          (guardianSnapshot.data()?[FirestoreFields.safemateIds]
-                      as List<dynamic>? ??
-                  const <dynamic>[])
-              .whereType<String>()
-              .toList();
-
-      guardianIds.remove(guardianId);
-      safemateIds.remove(safemateId);
-
-      transaction.set(safemateRef, <String, Object?>{
-        FirestoreFields.guardianIds: guardianIds,
-        FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
-      }, SetOptions(merge: true));
-      transaction.set(guardianRef, <String, Object?>{
-        FirestoreFields.safemateIds: safemateIds,
-        FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
-      }, SetOptions(merge: true));
-    });
+          transaction.set(safemateRef, <String, Object?>{
+            FirestoreFields.guardianIds: FieldValue.arrayRemove(<String>[
+              guardianId,
+            ]),
+            FirestoreFields.updatedAt: now,
+          }, SetOptions(merge: true));
+          transaction.set(guardianRef, <String, Object?>{
+            FirestoreFields.safemateIds: FieldValue.arrayRemove(<String>[
+              safemateId,
+            ]),
+            FirestoreFields.updatedAt: now,
+          }, SetOptions(merge: true));
+        });
+      },
+    );
   }
 
   @override
@@ -318,9 +443,15 @@ class FirebaseProfileRepository implements ProfileRepository {
 
   @override
   Future<void> saveMedicalProfile(MedicalProfile profile) {
-    return _firestoreService.medicalProfiles
-        .doc(profile.userId)
-        .set(profile.toMap(), SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'save medical profile',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _firestoreService.medicalProfiles
+            .doc(profile.userId)
+            .set(profile.toMap(), SetOptions(merge: true));
+      },
+    );
   }
 
   @override
@@ -336,9 +467,15 @@ class FirebaseProfileRepository implements ProfileRepository {
 
   @override
   Future<void> saveSettings(UserSettings settings) {
-    return _firestoreService.settings
-        .doc(settings.userId)
-        .set(settings.toMap(), SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'save settings',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _firestoreService.settings
+            .doc(settings.userId)
+            .set(settings.toMap(), SetOptions(merge: true));
+      },
+    );
   }
 
   @override
@@ -354,8 +491,28 @@ class FirebaseProfileRepository implements ProfileRepository {
 
   @override
   Future<void> saveGeofenceConfig(GeofenceConfig config) {
-    return _firestoreService.geofences
-        .doc(config.userId)
-        .set(config.toMap(), SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'save geofence config',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _firestoreService.geofences
+            .doc(config.userId)
+            .set(config.toMap(), SetOptions(merge: true));
+      },
+    );
+  }
+
+  List<UserProfile> _mapUserProfiles(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final List<UserProfile> items = snapshot.docs
+        .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+          return UserProfile.fromMap(doc.data(), documentId: doc.id);
+        })
+        .toList(growable: false);
+    items.sort((UserProfile a, UserProfile b) {
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return items;
   }
 }

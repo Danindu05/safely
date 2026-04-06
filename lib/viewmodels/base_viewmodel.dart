@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../core/constants/app_constants.dart';
+import '../core/utils/app_logger.dart';
 import '../core/utils/firebase_error_mapper.dart';
 
 class BaseViewModel extends ChangeNotifier {
@@ -29,14 +33,32 @@ class BaseViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<T?> guard<T>(Future<T> Function() action) async {
+  Future<T?> guard<T>(
+    Future<T> Function() action, {
+    String? operationName,
+    Duration timeout = const Duration(
+      seconds: AppConstants.asyncOperationTimeoutSeconds,
+    ),
+  }) async {
     _errorMessage = null;
+    _infoMessage = null;
     _isBusy = true;
     notifyListeners();
 
     try {
-      return await action();
-    } catch (error) {
+      final Future<T> operation = action();
+      return await operation.timeout(
+        timeout,
+        onTimeout: () => throw TimeoutException(
+          'This is taking longer than expected. Please try again.',
+        ),
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        operationName ?? runtimeType.toString(),
+        error: error,
+        stackTrace: stackTrace,
+      );
       _errorMessage = FirebaseErrorMapper.map(error);
       return null;
     } finally {

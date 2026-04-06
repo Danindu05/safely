@@ -23,6 +23,7 @@ import 'firebase_storage_service.dart';
 import 'firestore_service.dart';
 import 'local_notifications_service.dart';
 import 'location_service.dart';
+import 'notification_intent_service.dart';
 import 'permissions_service.dart';
 import 'preferences_service.dart';
 import 'realtime_database_service.dart';
@@ -32,6 +33,7 @@ class AppDependencies {
     required this.preferencesService,
     required this.permissionsService,
     required this.connectivityService,
+    required this.notificationIntentService,
     required this.authRepository,
     required this.profileRepository,
     required this.alertRepository,
@@ -43,6 +45,7 @@ class AppDependencies {
   final PreferencesService preferencesService;
   final PermissionsService permissionsService;
   final ConnectivityService connectivityService;
+  final NotificationIntentService notificationIntentService;
   final AuthRepository authRepository;
   final ProfileRepository profileRepository;
   final AlertRepository alertRepository;
@@ -54,8 +57,10 @@ class AppDependencies {
     final SharedPreferences sharedPreferences =
         await SharedPreferences.getInstance();
 
+    final NotificationIntentService notificationIntentService =
+        NotificationIntentService();
     final LocalNotificationsService localNotificationsService =
-        LocalNotificationsService();
+        LocalNotificationsService(notificationIntentService);
     await localNotificationsService.initialize();
 
     final FirebaseAuthService authService = FirebaseAuthService(
@@ -101,6 +106,7 @@ class AppDependencies {
         FirebaseNotificationRepository(
           messagingService: messagingService,
           localNotificationsService: localNotificationsService,
+          notificationIntentService: notificationIntentService,
           profileRepository: profileRepository,
         );
     final SafetyRepository safetyRepository = DefaultSafetyRepository(
@@ -120,6 +126,7 @@ class AppDependencies {
       preferencesService: preferencesService,
       permissionsService: permissionsService,
       connectivityService: connectivityService,
+      notificationIntentService: notificationIntentService,
       authRepository: authRepository,
       profileRepository: profileRepository,
       alertRepository: alertRepository,

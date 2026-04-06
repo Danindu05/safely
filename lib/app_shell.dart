@@ -6,10 +6,12 @@ import 'screens/auth/role_selection_screen.dart';
 import 'screens/common/onboarding_screen.dart';
 import 'screens/common/permission_setup_screen.dart';
 import 'screens/common/splash_screen.dart';
+import 'screens/guardian/alert_detail_screen.dart';
 import 'screens/guardian/guardian_shell_screen.dart';
 import 'screens/safemate/emergency_active_screen.dart';
 import 'screens/safemate/medical_profile_setup_screen.dart';
 import 'screens/safemate/safemate_shell_screen.dart';
+import 'core/services/notification_intent_service.dart';
 import 'viewmodels/app_router_viewmodel.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/notification_repository.dart';
@@ -18,6 +20,36 @@ import 'core/services/preferences_service.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({super.key});
+
+  void _handlePendingAlertNavigation(
+    BuildContext context,
+    AppRouterViewModel router,
+    NotificationIntentService notificationIntentService,
+  ) {
+    if (router.routeState != AppRouteState.guardianShell) {
+      return;
+    }
+
+    final String? pendingAlertId = notificationIntentService.pendingAlertId;
+    final String? guardianId = router.currentUser?.id;
+    if (pendingAlertId == null || guardianId == null) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final String? alertId = notificationIntentService.takePendingAlertId();
+      if (alertId == null || !context.mounted) {
+        return;
+      }
+
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              AlertDetailScreen(alertId: alertId, guardianId: guardianId),
+        ),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,9 +60,20 @@ class AppShell extends StatelessWidget {
         notificationRepository: context.read<NotificationRepository>(),
         preferencesService: context.read<PreferencesService>(),
       ),
-      child: Consumer<AppRouterViewModel>(
+      child: Consumer2<AppRouterViewModel, NotificationIntentService>(
         builder:
-            (BuildContext context, AppRouterViewModel router, Widget? child) {
+            (
+              BuildContext context,
+              AppRouterViewModel router,
+              NotificationIntentService notificationIntentService,
+              Widget? child,
+            ) {
+              _handlePendingAlertNavigation(
+                context,
+                router,
+                notificationIntentService,
+              );
+
               switch (router.routeState) {
                 case AppRouteState.splash:
                   return const SplashScreen();

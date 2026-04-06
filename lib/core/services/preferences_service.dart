@@ -70,4 +70,17 @@ class PreferencesService {
       sessionId,
     );
   }
+
+  String? get activeGeofenceZoneId {
+    return _preferences.getString(AppConstants.activeGeofenceZoneIdKey);
+  }
+
+  Future<void> setActiveGeofenceZoneId(String? zoneId) async {
+    if (zoneId == null || zoneId.isEmpty) {
+      await _preferences.remove(AppConstants.activeGeofenceZoneIdKey);
+      return;
+    }
+
+    await _preferences.setString(AppConstants.activeGeofenceZoneIdKey, zoneId);
+  }
 }

@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:geolocator/geolocator.dart';
 
+import '../core/constants/app_constants.dart';
 import '../core/services/location_service.dart';
 import '../core/services/realtime_database_service.dart';
+import '../core/utils/retry_helper.dart';
 import '../models/live_location.dart';
 
 abstract class LocationRepository {
@@ -54,9 +56,15 @@ class FirebaseLocationRepository implements LocationRepository {
 
   @override
   Future<void> updateLiveLocation(LiveLocation location) {
-    return _realtimeDatabaseService
-        .liveLocationRef(location.userId)
-        .set(location.toMap());
+    return RetryHelper.run<void>(
+      label: 'update live location',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _realtimeDatabaseService
+            .liveLocationRef(location.userId)
+            .set(location.toMap());
+      },
+    );
   }
 
   @override
@@ -74,7 +82,12 @@ class FirebaseLocationRepository implements LocationRepository {
 
   @override
   Future<void> clearLiveLocation(String userId) {
-    return _realtimeDatabaseService.liveLocationRef(userId).remove();
+    return RetryHelper.run<void>(
+      label: 'clear live location',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () =>
+          _realtimeDatabaseService.liveLocationRef(userId).remove(),
+    );
   }
 
   @override

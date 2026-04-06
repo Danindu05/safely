@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../core/services/connectivity_service.dart';
+import '../core/utils/app_logger.dart';
 import '../models/geofence_zone.dart';
 import '../models/user_profile.dart';
 import '../models/user_settings.dart';
@@ -18,7 +19,8 @@ class SafemateShellViewModel extends BaseViewModel {
        _safetyRepository = safetyRepository,
        _connectivityService = connectivityService,
        _userId = initialUser.id,
-       _currentUser = initialUser {
+       _currentUser = initialUser,
+       _settings = UserSettings.defaults(initialUser.id) {
     _bind();
   }
 
@@ -94,29 +96,34 @@ class SafemateShellViewModel extends BaseViewModel {
   }
 
   Future<void> _runMonitors() async {
-    if (_settings == null) {
-      return;
-    }
+    final UserSettings settings = _settings ?? UserSettings.defaults(_userId);
 
-    await _profileRepository.updateLastSeen(_userId);
-    final GeofenceConfig geofenceConfig =
-        _geofenceConfig ?? GeofenceConfig.empty(_userId);
-    await _safetyRepository.evaluateMonitoringModes(
-      profile: _currentUser,
-      geofenceConfig: geofenceConfig,
-      settings: _settings!,
-    );
-    await _safetyRepository.maybeCreateBatteryAlert(
-      profile: _currentUser,
-      settings: _settings!,
-    );
+    try {
+      await _profileRepository.updateLastSeen(_userId);
+      final GeofenceConfig geofenceConfig =
+          _geofenceConfig ?? GeofenceConfig.empty(_userId);
+      await _safetyRepository.evaluateMonitoringModes(
+        profile: _currentUser,
+        geofenceConfig: geofenceConfig,
+        settings: settings,
+      );
+      await _safetyRepository.maybeCreateBatteryAlert(
+        profile: _currentUser,
+        settings: settings,
+      );
 
-    if (_geofenceConfig != null) {
       await _safetyRepository.evaluateGeofences(
         profile: _currentUser,
-        geofenceConfig: _geofenceConfig!,
-        settings: _settings!,
+        geofenceConfig: geofenceConfig,
+        settings: settings,
       );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Background safety monitors failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      setError(error);
     }
   }
 
