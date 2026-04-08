@@ -153,7 +153,8 @@ service cloud.firestore {
           'low_battery',
           'geofence',
           'missed_checkin',
-          'manual_checkin'
+          'manual_checkin',
+          'route_deviation'
         ]
         && request.resource.data.status in [
           'active',

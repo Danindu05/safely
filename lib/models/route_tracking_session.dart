@@ -1,0 +1,75 @@
+class RouteTrackingSession {
+  const RouteTrackingSession({
+    required this.startLat,
+    required this.startLng,
+    required this.destinationLat,
+    required this.destinationLng,
+    required this.startedAt,
+    required this.deviationThresholdMeters,
+    required this.deviationAlertSent,
+    required this.startedLiveSharingForRoute,
+  });
+
+  final double startLat;
+  final double startLng;
+  final double destinationLat;
+  final double destinationLng;
+  final DateTime startedAt;
+  final double deviationThresholdMeters;
+  final bool deviationAlertSent;
+  final bool startedLiveSharingForRoute;
+
+  factory RouteTrackingSession.fromMap(Map<String, dynamic> map) {
+    return RouteTrackingSession(
+      startLat: (map['startLat'] as num?)?.toDouble() ?? 0,
+      startLng: (map['startLng'] as num?)?.toDouble() ?? 0,
+      destinationLat: (map['destinationLat'] as num?)?.toDouble() ?? 0,
+      destinationLng: (map['destinationLng'] as num?)?.toDouble() ?? 0,
+      startedAt:
+          DateTime.tryParse(map['startedAt'] as String? ?? '') ??
+          DateTime.now(),
+      deviationThresholdMeters:
+          (map['deviationThresholdMeters'] as num?)?.toDouble() ?? 150,
+      deviationAlertSent: map['deviationAlertSent'] as bool? ?? false,
+      startedLiveSharingForRoute:
+          map['startedLiveSharingForRoute'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return <String, dynamic>{
+      'startLat': startLat,
+      'startLng': startLng,
+      'destinationLat': destinationLat,
+      'destinationLng': destinationLng,
+      'startedAt': startedAt.toIso8601String(),
+      'deviationThresholdMeters': deviationThresholdMeters,
+      'deviationAlertSent': deviationAlertSent,
+      'startedLiveSharingForRoute': startedLiveSharingForRoute,
+    };
+  }
+
+  RouteTrackingSession copyWith({
+    double? startLat,
+    double? startLng,
+    double? destinationLat,
+    double? destinationLng,
+    DateTime? startedAt,
+    double? deviationThresholdMeters,
+    bool? deviationAlertSent,
+    bool? startedLiveSharingForRoute,
+  }) {
+    return RouteTrackingSession(
+      startLat: startLat ?? this.startLat,
+      startLng: startLng ?? this.startLng,
+      destinationLat: destinationLat ?? this.destinationLat,
+      destinationLng: destinationLng ?? this.destinationLng,
+      startedAt: startedAt ?? this.startedAt,
+      deviationThresholdMeters:
+          deviationThresholdMeters ?? this.deviationThresholdMeters,
+      deviationAlertSent: deviationAlertSent ?? this.deviationAlertSent,
+      startedLiveSharingForRoute:
+          startedLiveSharingForRoute ?? this.startedLiveSharingForRoute,
+    );
+  }
+}

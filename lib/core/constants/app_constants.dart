@@ -10,11 +10,17 @@ class AppConstants {
   static const int asyncOperationTimeoutSeconds = 20;
   static const int routeLoadingTimeoutSeconds = 8;
   static const int maxCriticalWriteAttempts = 3;
+  static const int backgroundMonitorIntervalMinutes = 2;
+  static const int runtimeHeartbeatIntervalSeconds = 1;
+  static const int routeEvaluationIntervalSeconds = 15;
   static const int liveLocationDistanceFilterMeters = 5;
   static const int lowBatteryWarningFallback = 15;
   static const int lowBatteryCriticalFallback = 5;
+  static const int checkInPromptTimeoutSeconds = 60;
   static const int nightMonitoringStartHour = 22;
   static const int nightMonitoringEndHour = 6;
+  static const double routeDeviationThresholdMeters = 150;
+  static const double routeCompletionThresholdMeters = 75;
   static const String onboardingSeenKey = 'onboarding_seen';
   static const String permissionSetupCompletedKey =
       'permission_setup_completed';
@@ -23,6 +29,8 @@ class AppConstants {
   static const String lastNightMonitoringAlertSessionKey =
       'last_night_monitoring_alert_session';
   static const String activeGeofenceZoneIdKey = 'active_geofence_zone_id';
+  static const String safetyTimerStateKey = 'safety_timer_state';
+  static const String routeTrackingStateKey = 'route_tracking_state';
   static const String alertsNotificationChannelId = 'safely_alerts';
   static const String alertsNotificationChannelName = 'Safely Alerts';
   static const String alertsNotificationChannelDescription =

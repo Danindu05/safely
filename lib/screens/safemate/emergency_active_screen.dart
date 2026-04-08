@@ -123,10 +123,21 @@ class _EmergencyActiveScreenBody extends StatelessWidget {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Live location is ${viewModel.runtimeState.isLiveSharingActive ? 'active' : 'stopped'} and recording is ${viewModel.runtimeState.isRecordingActive ? 'running' : 'stopped'}.',
+                          viewModel.runtimeState.isAudioUploading
+                              ? 'Live location is ${viewModel.runtimeState.isLiveSharingActive ? 'active' : 'stopped'} and the emergency recording is uploading.'
+                              : 'Live location is ${viewModel.runtimeState.isLiveSharingActive ? 'active' : 'stopped'} and recording is ${viewModel.runtimeState.isRecordingActive ? 'running' : 'stopped'}.',
                           style: const TextStyle(color: Colors.white70),
                           textAlign: TextAlign.center,
                         ),
+                        if (viewModel.runtimeState.audioUploadError !=
+                            null) ...<Widget>[
+                          const SizedBox(height: 10),
+                          Text(
+                            viewModel.runtimeState.audioUploadError!,
+                            style: const TextStyle(color: Colors.white),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -142,6 +153,14 @@ class _EmergencyActiveScreenBody extends StatelessWidget {
                           Text(DateTimeFormatter.formatShort(alert.timestamp)),
                           const SizedBox(height: 6),
                           Text('Status: ${alert.status.label}'),
+                          if (viewModel
+                              .runtimeState
+                              .isAudioUploading) ...<Widget>[
+                            const SizedBox(height: 10),
+                            const LinearProgressIndicator(),
+                            const SizedBox(height: 8),
+                            const Text('Uploading emergency audio...'),
+                          ],
                         ],
                       ],
                     ),

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:geolocator/geolocator.dart';
 
@@ -14,8 +16,10 @@ import '../models/activity_log.dart';
 import '../models/app_enums.dart';
 import '../models/geofence_zone.dart';
 import '../models/live_location.dart';
+import '../models/route_tracking_session.dart';
 import '../models/safety_alert.dart';
 import '../models/safety_checkin.dart';
+import '../models/safety_timer_state.dart';
 import '../models/user_profile.dart';
 import '../models/user_settings.dart';
 import 'alert_repository.dart';
@@ -26,16 +30,24 @@ class SafetyRuntimeState {
   const SafetyRuntimeState({
     required this.isLiveSharingActive,
     required this.isRecordingActive,
+    required this.isAudioUploading,
+    required this.audioUploadError,
     required this.activeAlertId,
     required this.isTrustedPlaceActive,
     required this.isNightMonitoringActive,
+    required this.activeRouteTracking,
+    required this.safetyTimer,
   });
 
   final bool isLiveSharingActive;
   final bool isRecordingActive;
+  final bool isAudioUploading;
+  final String? audioUploadError;
   final String? activeAlertId;
   final bool isTrustedPlaceActive;
   final bool isNightMonitoringActive;
+  final RouteTrackingSession? activeRouteTracking;
+  final SafetyTimerState? safetyTimer;
 }
 
 abstract class SafetyRepository {
@@ -60,6 +72,12 @@ abstract class SafetyRepository {
     required int? batteryLevel,
   });
 
+  Future<SafetyAlert> createMissedCheckInAlert({
+    required UserProfile profile,
+    required String description,
+    String? title,
+  });
+
   Future<SafetyAlert?> maybeCreateBatteryAlert({
     required UserProfile profile,
     required UserSettings settings,
@@ -76,6 +94,28 @@ abstract class SafetyRepository {
     required GeofenceConfig geofenceConfig,
     required UserSettings settings,
   });
+
+  Future<void> startSafetyTimer({
+    required UserProfile profile,
+    required Duration duration,
+  });
+
+  Future<void> cancelSafetyTimer({String? userId});
+
+  Future<void> evaluateSafetyTimer({
+    required UserProfile profile,
+    required UserSettings settings,
+  });
+
+  Future<void> startRouteTracking({
+    required UserProfile profile,
+    required double destinationLat,
+    required double destinationLng,
+  });
+
+  Future<void> stopRouteTracking({required String userId});
+
+  Future<SafetyAlert?> evaluateRouteTracking({required UserProfile profile});
 
   Future<void> dispose();
 }
@@ -98,6 +138,7 @@ class DefaultSafetyRepository implements SafetyRepository {
        _storageService = storageService,
        _preferencesService = preferencesService,
        _localNotificationsService = localNotificationsService {
+    _restorePersistedRuntimeState();
     _emitRuntimeState();
   }
 
@@ -116,8 +157,12 @@ class DefaultSafetyRepository implements SafetyRepository {
   StreamSubscription<Position>? _liveLocationSubscription;
   String? _activeAlertId;
   bool _isRecordingActive = false;
+  bool _isAudioUploading = false;
+  String? _audioUploadError;
   bool _isTrustedPlaceActive = false;
   bool _isNightMonitoringActive = false;
+  SafetyTimerState? _activeSafetyTimer;
+  RouteTrackingSession? _activeRouteTracking;
 
   @override
   Stream<SafetyRuntimeState> get runtimeState => _runtimeController.stream;
@@ -168,6 +213,11 @@ class DefaultSafetyRepository implements SafetyRepository {
     required UserProfile profile,
     required UserSettings settings,
   }) async {
+    await cancelSafetyTimer(userId: profile.id);
+    await _persistRouteTrackingSession(null);
+    _activeRouteTracking = null;
+    _audioUploadError = null;
+
     final Position position = await _locationRepository.getCurrentPosition();
     final int batteryLevel = await _batteryService.getBatteryLevel();
     final String alertId = DateTime.now().microsecondsSinceEpoch.toString();
@@ -258,11 +308,15 @@ class DefaultSafetyRepository implements SafetyRepository {
     }
 
     String? audioUrl;
+    _audioUploadError = null;
+
     if (_isRecordingActive) {
       _isRecordingActive = false;
       try {
         final String? filePath = await _audioRecordingService.stopRecording();
         if (filePath != null) {
+          _isAudioUploading = true;
+          _emitRuntimeState();
           audioUrl = await RetryHelper.run<String>(
             label: 'upload emergency audio',
             attempts: AppConstants.maxCriticalWriteAttempts,
@@ -281,6 +335,10 @@ class DefaultSafetyRepository implements SafetyRepository {
           error: error,
           stackTrace: stackTrace,
         );
+        _audioUploadError = 'Emergency audio could not be uploaded.';
+      } finally {
+        _isAudioUploading = false;
+        _emitRuntimeState();
       }
     }
 
@@ -411,6 +469,22 @@ class DefaultSafetyRepository implements SafetyRepository {
   }
 
   @override
+  Future<SafetyAlert> createMissedCheckInAlert({
+    required UserProfile profile,
+    required String description,
+    String? title,
+  }) {
+    return _createMissedCheckInIncident(
+      profile: profile,
+      title: title ?? 'Missed safety check-in',
+      description: description,
+      metadata: const <String, dynamic>{'source': 'timed_checkin'},
+      localWarningBody:
+          'Guardians have been notified about the missed check-in.',
+    );
+  }
+
+  @override
   Future<SafetyAlert?> maybeCreateBatteryAlert({
     required UserProfile profile,
     required UserSettings settings,
@@ -447,17 +521,19 @@ class DefaultSafetyRepository implements SafetyRepository {
         );
       }
     }
+    final bool isCritical = batteryLevel <= settings.lowBatteryCriticalPercent;
+    final DateTime now = DateTime.now();
     final SafetyAlert alert = SafetyAlert(
-      id: 'battery_${DateTime.now().microsecondsSinceEpoch}',
+      id: 'battery_${now.microsecondsSinceEpoch}',
       userId: profile.id,
       guardianIds: profile.guardianIds,
       type: AlertType.lowBattery,
       status: AlertStatus.active,
-      title: batteryLevel <= settings.lowBatteryCriticalPercent
-          ? 'Critical battery level'
-          : 'Battery running low',
-      description: '${profile.name} is at $batteryLevel% battery.',
-      timestamp: DateTime.now(),
+      title: isCritical ? 'Critical battery level' : 'Battery running low',
+      description: isCritical
+          ? 'Battery critical — last location shared'
+          : '${profile.name} is at $batteryLevel% battery.',
+      timestamp: now,
       locationLat: position?.latitude,
       locationLng: position?.longitude,
       batteryLevel: batteryLevel,
@@ -475,15 +551,27 @@ class DefaultSafetyRepository implements SafetyRepository {
         userId: profile.id,
         eventType: LogEventType.lowBatteryTriggered,
         message: 'Low battery alert created at $batteryLevel%.',
-        timestamp: DateTime.now(),
+        timestamp: now,
         metadata: <String, dynamic>{'batteryLevel': batteryLevel},
       ),
     );
     await _localNotificationsService.showLocalWarning(
       title: alert.title,
-      body: 'Guardians can now see this battery warning.',
+      body: isCritical
+          ? 'Last location was shared and emergency mode is starting.'
+          : 'Guardians can now see this battery warning.',
     );
     await _preferencesService.setLastBatteryAlertLevel(threshold);
+
+    if (isCritical && !profile.isEmergencyActive) {
+      await _activateBatteryEmergency(
+        profile: profile,
+        batteryLevel: batteryLevel,
+        alert: alert,
+        position: position,
+      );
+    }
+
     return alert;
   }
 
@@ -555,6 +643,220 @@ class DefaultSafetyRepository implements SafetyRepository {
     return alert;
   }
 
+  @override
+  Future<void> startSafetyTimer({
+    required UserProfile profile,
+    required Duration duration,
+  }) async {
+    final DateTime now = DateTime.now();
+    _activeSafetyTimer = SafetyTimerState(
+      durationMinutes: duration.inMinutes,
+      startedAt: now,
+      endsAt: now.add(duration),
+    );
+    await _persistSafetyTimerState(_activeSafetyTimer);
+    await _alertRepository.createLog(
+      ActivityLog(
+        id: 'timer_start_${now.microsecondsSinceEpoch}',
+        userId: profile.id,
+        eventType: LogEventType.safetyTimerStarted,
+        message: 'Safety timer started for ${duration.inMinutes} minutes.',
+        timestamp: now,
+        metadata: <String, dynamic>{'durationMinutes': duration.inMinutes},
+      ),
+    );
+    _emitRuntimeState();
+  }
+
+  @override
+  Future<void> cancelSafetyTimer({String? userId}) async {
+    if (_activeSafetyTimer == null) {
+      return;
+    }
+
+    final DateTime now = DateTime.now();
+    _activeSafetyTimer = null;
+    await _persistSafetyTimerState(null);
+    if (userId != null) {
+      await _alertRepository.createLog(
+        ActivityLog(
+          id: 'timer_cancel_${now.microsecondsSinceEpoch}',
+          userId: userId,
+          eventType: LogEventType.safetyTimerCanceled,
+          message: 'Safety timer was canceled.',
+          timestamp: now,
+          metadata: const <String, dynamic>{},
+        ),
+      );
+    }
+    _emitRuntimeState();
+  }
+
+  @override
+  Future<void> evaluateSafetyTimer({
+    required UserProfile profile,
+    required UserSettings settings,
+  }) async {
+    final SafetyTimerState? timer = _activeSafetyTimer;
+    if (timer == null) {
+      return;
+    }
+
+    if (timer.endsAt.isAfter(DateTime.now())) {
+      _emitRuntimeState();
+      return;
+    }
+
+    _activeSafetyTimer = null;
+    await _persistSafetyTimerState(null);
+    _emitRuntimeState();
+    await _localNotificationsService.showLocalWarning(
+      title: 'Safety timer expired',
+      body: 'SOS is being sent now.',
+    );
+
+    if (!profile.isEmergencyActive) {
+      await triggerSos(profile: profile, settings: settings);
+    }
+  }
+
+  @override
+  Future<void> startRouteTracking({
+    required UserProfile profile,
+    required double destinationLat,
+    required double destinationLng,
+  }) async {
+    final Position startPosition = await _locationRepository
+        .getCurrentPosition();
+    final bool startedLiveSharingForRoute = _liveLocationSubscription == null;
+    _activeRouteTracking = RouteTrackingSession(
+      startLat: startPosition.latitude,
+      startLng: startPosition.longitude,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+      startedAt: DateTime.now(),
+      deviationThresholdMeters: AppConstants.routeDeviationThresholdMeters,
+      deviationAlertSent: false,
+      startedLiveSharingForRoute: startedLiveSharingForRoute,
+    );
+
+    await _persistRouteTrackingSession(_activeRouteTracking);
+    if (startedLiveSharingForRoute) {
+      await _startLiveLocationFeed(
+        userId: profile.id,
+        guardianIds: profile.guardianIds,
+        source: 'route_tracking',
+        isEmergency: false,
+        initialPosition: startPosition,
+      );
+    }
+    _emitRuntimeState();
+  }
+
+  @override
+  Future<void> stopRouteTracking({required String userId}) async {
+    final RouteTrackingSession? routeTracking = _activeRouteTracking;
+    _activeRouteTracking = null;
+    await _persistRouteTrackingSession(null);
+    if (routeTracking?.startedLiveSharingForRoute == true &&
+        _activeAlertId == null) {
+      await _stopLiveSharingInternal(userId);
+    }
+    _emitRuntimeState();
+  }
+
+  @override
+  Future<SafetyAlert?> evaluateRouteTracking({
+    required UserProfile profile,
+  }) async {
+    final RouteTrackingSession? routeTracking = _activeRouteTracking;
+    if (routeTracking == null) {
+      return null;
+    }
+
+    final Position position = await _locationRepository.getCurrentPosition();
+    if (_liveLocationSubscription == null && _activeAlertId == null) {
+      await _startLiveLocationFeed(
+        userId: profile.id,
+        guardianIds: profile.guardianIds,
+        source: 'route_tracking',
+        isEmergency: false,
+        initialPosition: position,
+      );
+    }
+
+    final double distanceToDestination = _locationRepository.distanceBetween(
+      startLat: position.latitude,
+      startLng: position.longitude,
+      endLat: routeTracking.destinationLat,
+      endLng: routeTracking.destinationLng,
+    );
+
+    if (distanceToDestination <= AppConstants.routeCompletionThresholdMeters) {
+      await stopRouteTracking(userId: profile.id);
+      await _localNotificationsService.showLocalWarning(
+        title: 'Journey complete',
+        body: 'Route tracking has been turned off.',
+      );
+      return null;
+    }
+
+    final double deviationDistance = _distanceFromRouteLineMeters(
+      routeTracking,
+      position,
+    );
+    if (deviationDistance <= routeTracking.deviationThresholdMeters ||
+        routeTracking.deviationAlertSent) {
+      return null;
+    }
+
+    final int batteryLevel = await _batteryService.getBatteryLevel();
+    final DateTime now = DateTime.now();
+    final SafetyAlert alert = SafetyAlert(
+      id: 'route_${now.microsecondsSinceEpoch}',
+      userId: profile.id,
+      guardianIds: profile.guardianIds,
+      type: AlertType.routeDeviation,
+      status: AlertStatus.active,
+      title: 'Route deviation detected',
+      description: '${profile.name} moved away from the planned journey path.',
+      timestamp: now,
+      locationLat: position.latitude,
+      locationLng: position.longitude,
+      batteryLevel: batteryLevel,
+      audioUrl: null,
+      acknowledgedBy: null,
+      acknowledgedAt: null,
+      canceledByUser: false,
+      resolvedAt: null,
+    );
+    await _alertRepository.createAlert(alert);
+    await _alertRepository.createLog(
+      ActivityLog(
+        id: '${alert.id}_log',
+        userId: profile.id,
+        eventType: LogEventType.routeDeviation,
+        message:
+            'Route deviation detected at ${deviationDistance.toStringAsFixed(0)} meters from the planned path.',
+        timestamp: now,
+        metadata: <String, dynamic>{
+          'distanceFromRouteMeters': deviationDistance,
+          'destinationLat': routeTracking.destinationLat,
+          'destinationLng': routeTracking.destinationLng,
+        },
+      ),
+    );
+    await _localNotificationsService.showLocalWarning(
+      title: 'Route changed',
+      body: 'Guardians can now see the route deviation alert.',
+    );
+
+    _activeRouteTracking = routeTracking.copyWith(deviationAlertSent: true);
+    await _persistRouteTrackingSession(_activeRouteTracking);
+    _emitRuntimeState();
+    return alert;
+  }
+
   GeofenceZone? _zoneContainingPoint({
     required GeofenceConfig geofenceConfig,
     required Position position,
@@ -606,23 +908,65 @@ class DefaultSafetyRepository implements SafetyRepository {
       return;
     }
 
+    await _createMissedCheckInIncident(
+      profile: profile,
+      title: 'Night monitoring check-in missed',
+      description:
+          '${profile.name} has not checked in during the active night monitoring window.',
+      metadata: <String, dynamic>{'sessionId': sessionId, 'source': 'night'},
+      localWarningBody: 'A missed night check-in alert was sent to guardians.',
+    );
+    await _preferencesService.setLastNightMonitoringAlertSession(sessionId);
+  }
+
+  String _nightSessionId(DateTime now) {
+    final DateTime anchorDate = now.hour < AppConstants.nightMonitoringEndHour
+        ? now.subtract(const Duration(days: 1))
+        : now;
+    return '${anchorDate.year.toString().padLeft(4, '0')}-'
+        '${anchorDate.month.toString().padLeft(2, '0')}-'
+        '${anchorDate.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<SafetyAlert> _createMissedCheckInIncident({
+    required UserProfile profile,
+    required String title,
+    required String description,
+    required Map<String, dynamic> metadata,
+    required String localWarningBody,
+  }) async {
+    final DateTime now = DateTime.now();
     final Position? lastKnownPosition = await _locationRepository
         .getLastKnownPosition();
-    final Position lastPosition =
+    final Position position =
         lastKnownPosition ?? await _locationRepository.getCurrentPosition();
     final int batteryLevel = await _batteryService.getBatteryLevel();
+    final String id = 'missed_${now.microsecondsSinceEpoch}';
+
+    await _alertRepository.createCheckIn(
+      SafetyCheckIn(
+        id: '${id}_checkin',
+        userId: profile.id,
+        type: CheckInType.missed,
+        timestamp: now,
+        batteryLevel: batteryLevel,
+        locationLat: position.latitude,
+        locationLng: position.longitude,
+        status: CheckInStatus.missed,
+      ),
+    );
+
     final SafetyAlert alert = SafetyAlert(
-      id: 'night_${now.microsecondsSinceEpoch}',
+      id: id,
       userId: profile.id,
       guardianIds: profile.guardianIds,
       type: AlertType.missedCheckin,
       status: AlertStatus.active,
-      title: 'Night monitoring check-in missed',
-      description:
-          '${profile.name} has not checked in during the active night monitoring window.',
+      title: title,
+      description: description,
       timestamp: now,
-      locationLat: lastPosition.latitude,
-      locationLng: lastPosition.longitude,
+      locationLat: position.latitude,
+      locationLng: position.longitude,
       batteryLevel: batteryLevel,
       audioUrl: null,
       acknowledgedBy: null,
@@ -637,25 +981,66 @@ class DefaultSafetyRepository implements SafetyRepository {
         id: '${alert.id}_log',
         userId: profile.id,
         eventType: LogEventType.missedCheckIn,
-        message: 'Night monitoring raised a missed check-in alert.',
+        message: description,
         timestamp: now,
-        metadata: <String, dynamic>{'sessionId': sessionId},
+        metadata: metadata,
       ),
     );
+    await _profileRepository.updateLastLocationSync(profile.id, now);
     await _localNotificationsService.showLocalWarning(
-      title: 'Night monitoring needs attention',
-      body: 'A missed night check-in alert was sent to guardians.',
+      title: title,
+      body: localWarningBody,
     );
-    await _preferencesService.setLastNightMonitoringAlertSession(sessionId);
+    return alert;
   }
 
-  String _nightSessionId(DateTime now) {
-    final DateTime anchorDate = now.hour < AppConstants.nightMonitoringEndHour
-        ? now.subtract(const Duration(days: 1))
-        : now;
-    return '${anchorDate.year.toString().padLeft(4, '0')}-'
-        '${anchorDate.month.toString().padLeft(2, '0')}-'
-        '${anchorDate.day.toString().padLeft(2, '0')}';
+  Future<void> _activateBatteryEmergency({
+    required UserProfile profile,
+    required int batteryLevel,
+    required SafetyAlert alert,
+    required Position? position,
+  }) async {
+    final DateTime now = DateTime.now();
+    Position? livePosition = position;
+    livePosition ??= await _locationRepository.getLastKnownPosition();
+    if (livePosition == null) {
+      try {
+        livePosition = await _locationRepository.getCurrentPosition();
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Critical battery could not refresh location for emergency mode',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+
+    await _profileRepository.setEmergencyState(
+      uid: profile.id,
+      isEmergencyActive: true,
+    );
+    _activeAlertId = alert.id;
+    await _preferencesService.setActiveAlertId(alert.id);
+    if (livePosition != null) {
+      await _startLiveLocationFeed(
+        userId: profile.id,
+        guardianIds: profile.guardianIds,
+        source: 'low_battery',
+        isEmergency: true,
+        initialPosition: livePosition,
+      );
+    }
+    await _alertRepository.createLog(
+      ActivityLog(
+        id: '${alert.id}_battery_emergency',
+        userId: profile.id,
+        eventType: LogEventType.batteryEmergencyStarted,
+        message: 'Critical battery triggered emergency mode and live sharing.',
+        timestamp: now,
+        metadata: <String, dynamic>{'batteryLevel': batteryLevel},
+      ),
+    );
+    _emitRuntimeState();
   }
 
   Future<void> _startLiveLocationFeed({
@@ -729,14 +1114,123 @@ class DefaultSafetyRepository implements SafetyRepository {
     await _profileRepository.updateLastLocationSync(userId, now);
   }
 
+  void _restorePersistedRuntimeState() {
+    _activeAlertId = _preferencesService.activeAlertId;
+    _activeSafetyTimer = _decodeSafetyTimerState(
+      _preferencesService.safetyTimerStateJson,
+    );
+    _activeRouteTracking = _decodeRouteTrackingState(
+      _preferencesService.routeTrackingStateJson,
+    );
+  }
+
+  SafetyTimerState? _decodeSafetyTimerState(String? rawValue) {
+    if (rawValue == null || rawValue.isEmpty) {
+      return null;
+    }
+
+    try {
+      final Object? decoded = jsonDecode(rawValue);
+      if (decoded is Map<String, dynamic>) {
+        return SafetyTimerState.fromMap(decoded);
+      }
+      if (decoded is Map) {
+        return SafetyTimerState.fromMap(decoded.cast<String, dynamic>());
+      }
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Failed to decode persisted safety timer state',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+    return null;
+  }
+
+  RouteTrackingSession? _decodeRouteTrackingState(String? rawValue) {
+    if (rawValue == null || rawValue.isEmpty) {
+      return null;
+    }
+
+    try {
+      final Object? decoded = jsonDecode(rawValue);
+      if (decoded is Map<String, dynamic>) {
+        return RouteTrackingSession.fromMap(decoded);
+      }
+      if (decoded is Map) {
+        return RouteTrackingSession.fromMap(decoded.cast<String, dynamic>());
+      }
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Failed to decode persisted route tracking state',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+    return null;
+  }
+
+  Future<void> _persistSafetyTimerState(SafetyTimerState? timer) {
+    return _preferencesService.setSafetyTimerStateJson(
+      timer == null ? null : jsonEncode(timer.toMap()),
+    );
+  }
+
+  Future<void> _persistRouteTrackingSession(RouteTrackingSession? session) {
+    return _preferencesService.setRouteTrackingStateJson(
+      session == null ? null : jsonEncode(session.toMap()),
+    );
+  }
+
+  double _distanceFromRouteLineMeters(
+    RouteTrackingSession session,
+    Position currentPosition,
+  ) {
+    const double metersPerDegreeLat = 111320;
+    final double midLatRadians =
+        ((session.startLat + session.destinationLat) / 2) * (math.pi / 180);
+    final double metersPerDegreeLng =
+        metersPerDegreeLat * math.cos(midLatRadians);
+
+    final _Point start = _Point(0, 0);
+    final _Point end = _Point(
+      (session.destinationLng - session.startLng) * metersPerDegreeLng,
+      (session.destinationLat - session.startLat) * metersPerDegreeLat,
+    );
+    final _Point current = _Point(
+      (currentPosition.longitude - session.startLng) * metersPerDegreeLng,
+      (currentPosition.latitude - session.startLat) * metersPerDegreeLat,
+    );
+
+    final double lineLengthSquared = end.x * end.x + end.y * end.y;
+    if (lineLengthSquared == 0) {
+      return math.sqrt(current.x * current.x + current.y * current.y);
+    }
+
+    final double projection =
+        ((current.x - start.x) * (end.x - start.x) +
+            (current.y - start.y) * (end.y - start.y)) /
+        lineLengthSquared;
+    final double clampedProjection = projection.clamp(0, 1).toDouble();
+    final double nearestX = start.x + (end.x - start.x) * clampedProjection;
+    final double nearestY = start.y + (end.y - start.y) * clampedProjection;
+    final double dx = current.x - nearestX;
+    final double dy = current.y - nearestY;
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
   void _emitRuntimeState() {
     _runtimeController.add(
       SafetyRuntimeState(
         isLiveSharingActive: _liveLocationSubscription != null,
         isRecordingActive: _isRecordingActive,
+        isAudioUploading: _isAudioUploading,
+        audioUploadError: _audioUploadError,
         activeAlertId: _activeAlertId ?? _preferencesService.activeAlertId,
         isTrustedPlaceActive: _isTrustedPlaceActive,
         isNightMonitoringActive: _isNightMonitoringActive,
+        activeRouteTracking: _activeRouteTracking,
+        safetyTimer: _activeSafetyTimer,
       ),
     );
   }
@@ -747,4 +1241,11 @@ class DefaultSafetyRepository implements SafetyRepository {
     await _audioRecordingService.dispose();
     await _runtimeController.close();
   }
+}
+
+class _Point {
+  const _Point(this.x, this.y);
+
+  final double x;
+  final double y;
 }

@@ -83,4 +83,30 @@ class PreferencesService {
 
     await _preferences.setString(AppConstants.activeGeofenceZoneIdKey, zoneId);
   }
+
+  String? get safetyTimerStateJson {
+    return _preferences.getString(AppConstants.safetyTimerStateKey);
+  }
+
+  Future<void> setSafetyTimerStateJson(String? value) async {
+    if (value == null || value.isEmpty) {
+      await _preferences.remove(AppConstants.safetyTimerStateKey);
+      return;
+    }
+
+    await _preferences.setString(AppConstants.safetyTimerStateKey, value);
+  }
+
+  String? get routeTrackingStateJson {
+    return _preferences.getString(AppConstants.routeTrackingStateKey);
+  }
+
+  Future<void> setRouteTrackingStateJson(String? value) async {
+    if (value == null || value.isEmpty) {
+      await _preferences.remove(AppConstants.routeTrackingStateKey);
+      return;
+    }
+
+    await _preferences.setString(AppConstants.routeTrackingStateKey, value);
+  }
 }

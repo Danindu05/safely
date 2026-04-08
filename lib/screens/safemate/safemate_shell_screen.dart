@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/constants/app_constants.dart';
+import '../../core/theme/app_colors.dart';
+import '../../repositories/alert_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/safety_repository.dart';
 import '../../core/services/connectivity_service.dart';
@@ -22,6 +25,7 @@ class SafemateShellScreen extends StatelessWidget {
     return ChangeNotifierProvider<SafemateShellViewModel>(
       create: (_) => SafemateShellViewModel(
         profileRepository: context.read<ProfileRepository>(),
+        alertRepository: context.read<AlertRepository>(),
         safetyRepository: context.read<SafetyRepository>(),
         connectivityService: context.read<ConnectivityService>(),
         initialUser: userProfile,
@@ -77,7 +81,26 @@ class _SafemateShellBodyState extends State<_SafemateShellBody> {
             ];
 
             return Scaffold(
-              body: IndexedStack(index: _currentIndex, children: pages),
+              body: Column(
+                children: <Widget>[
+                  if (shellViewModel.shouldShowCheckInPrompt)
+                    SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppConstants.pagePadding,
+                          12,
+                          AppConstants.pagePadding,
+                          0,
+                        ),
+                        child: _CheckInPromptCard(viewModel: shellViewModel),
+                      ),
+                    ),
+                  Expanded(
+                    child: IndexedStack(index: _currentIndex, children: pages),
+                  ),
+                ],
+              ),
               bottomNavigationBar: NavigationBar(
                 selectedIndex: _currentIndex,
                 onDestinationSelected: (int index) {
@@ -110,6 +133,63 @@ class _SafemateShellBodyState extends State<_SafemateShellBody> {
               ),
             );
           },
+    );
+  }
+}
+
+class _CheckInPromptCard extends StatelessWidget {
+  const _CheckInPromptCard({required this.viewModel});
+
+  final SafemateShellViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    final Duration remaining =
+        viewModel.checkInPromptRemaining ?? Duration.zero;
+
+    return Card(
+      color: AppColors.safe.withValues(alpha: 0.08),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'Are you safe?',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tap once to confirm. If there is no response, guardians are notified automatically.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: viewModel.isBusy
+                        ? null
+                        : viewModel.respondToCheckInPrompt,
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text("I'm Safe"),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '${remaining.inSeconds}s',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppColors.warning,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
