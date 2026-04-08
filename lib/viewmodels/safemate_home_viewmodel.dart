@@ -38,6 +38,7 @@ class SafemateHomeViewModel extends BaseViewModel {
     isTrustedPlaceActive: false,
     isNightMonitoringActive: false,
     activeRouteTracking: null,
+    currentRoutePosition: null,
     safetyTimer: null,
   );
 

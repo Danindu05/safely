@@ -109,4 +109,40 @@ class PreferencesService {
 
     await _preferences.setString(AppConstants.routeTrackingStateKey, value);
   }
+
+  String? get backgroundCheckInPromptStartedAt {
+    return _preferences.getString(
+      AppConstants.backgroundCheckInPromptStartedAtKey,
+    );
+  }
+
+  Future<void> setBackgroundCheckInPromptStartedAt(String? value) async {
+    if (value == null || value.isEmpty) {
+      await _preferences.remove(
+        AppConstants.backgroundCheckInPromptStartedAtKey,
+      );
+      return;
+    }
+
+    await _preferences.setString(
+      AppConstants.backgroundCheckInPromptStartedAtKey,
+      value,
+    );
+  }
+
+  String? get pendingGeofenceEventJson {
+    return _preferences.getString(AppConstants.pendingGeofenceEventJsonKey);
+  }
+
+  Future<void> setPendingGeofenceEventJson(String? value) async {
+    if (value == null || value.isEmpty) {
+      await _preferences.remove(AppConstants.pendingGeofenceEventJsonKey);
+      return;
+    }
+
+    await _preferences.setString(
+      AppConstants.pendingGeofenceEventJsonKey,
+      value,
+    );
+  }
 }

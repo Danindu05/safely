@@ -8,6 +8,7 @@ import '../core/constants/app_constants.dart';
 import '../core/services/audio_recording_service.dart';
 import '../core/services/battery_service.dart';
 import '../core/services/firebase_storage_service.dart';
+import '../core/services/route_service.dart';
 import '../core/services/local_notifications_service.dart';
 import '../core/services/preferences_service.dart';
 import '../core/utils/app_logger.dart';
@@ -16,6 +17,7 @@ import '../models/activity_log.dart';
 import '../models/app_enums.dart';
 import '../models/geofence_zone.dart';
 import '../models/live_location.dart';
+import '../models/route_geometry.dart';
 import '../models/route_tracking_session.dart';
 import '../models/safety_alert.dart';
 import '../models/safety_checkin.dart';
@@ -36,6 +38,7 @@ class SafetyRuntimeState {
     required this.isTrustedPlaceActive,
     required this.isNightMonitoringActive,
     required this.activeRouteTracking,
+    required this.currentRoutePosition,
     required this.safetyTimer,
   });
 
@@ -47,6 +50,7 @@ class SafetyRuntimeState {
   final bool isTrustedPlaceActive;
   final bool isNightMonitoringActive;
   final RouteTrackingSession? activeRouteTracking;
+  final RoutePoint? currentRoutePosition;
   final SafetyTimerState? safetyTimer;
 }
 
@@ -56,6 +60,14 @@ abstract class SafetyRepository {
   Future<SafetyAlert> triggerSos({
     required UserProfile profile,
     required UserSettings settings,
+    String? autoReason,
+  });
+
+  Future<SafetyAlert?> triggerAutoEmergency({
+    required UserProfile profile,
+    required UserSettings settings,
+    required String reason,
+    Map<String, Object?> metadata = const <String, Object?>{},
   });
 
   Future<void> stopEmergency({
@@ -76,6 +88,7 @@ abstract class SafetyRepository {
     required UserProfile profile,
     required String description,
     String? title,
+    bool showLocalWarning = true,
   });
 
   Future<SafetyAlert?> maybeCreateBatteryAlert({
@@ -117,6 +130,13 @@ abstract class SafetyRepository {
 
   Future<SafetyAlert?> evaluateRouteTracking({required UserProfile profile});
 
+  Future<void> logEmergencyDetection({
+    required UserProfile profile,
+    required LogEventType eventType,
+    required String message,
+    required Map<String, Object?> metadata,
+  });
+
   Future<void> dispose();
 }
 
@@ -128,6 +148,7 @@ class DefaultSafetyRepository implements SafetyRepository {
     required BatteryService batteryService,
     required AudioRecordingService audioRecordingService,
     required FirebaseStorageService storageService,
+    required RouteService routeService,
     required PreferencesService preferencesService,
     required LocalNotificationsService localNotificationsService,
   }) : _alertRepository = alertRepository,
@@ -136,6 +157,7 @@ class DefaultSafetyRepository implements SafetyRepository {
        _batteryService = batteryService,
        _audioRecordingService = audioRecordingService,
        _storageService = storageService,
+       _routeService = routeService,
        _preferencesService = preferencesService,
        _localNotificationsService = localNotificationsService {
     _restorePersistedRuntimeState();
@@ -148,6 +170,7 @@ class DefaultSafetyRepository implements SafetyRepository {
   final BatteryService _batteryService;
   final AudioRecordingService _audioRecordingService;
   final FirebaseStorageService _storageService;
+  final RouteService _routeService;
   final PreferencesService _preferencesService;
   final LocalNotificationsService _localNotificationsService;
 
@@ -163,6 +186,7 @@ class DefaultSafetyRepository implements SafetyRepository {
   bool _isNightMonitoringActive = false;
   SafetyTimerState? _activeSafetyTimer;
   RouteTrackingSession? _activeRouteTracking;
+  RoutePoint? _currentRoutePosition;
 
   @override
   Stream<SafetyRuntimeState> get runtimeState => _runtimeController.stream;
@@ -212,6 +236,7 @@ class DefaultSafetyRepository implements SafetyRepository {
   Future<SafetyAlert> triggerSos({
     required UserProfile profile,
     required UserSettings settings,
+    String? autoReason,
   }) async {
     await cancelSafetyTimer(userId: profile.id);
     await _persistRouteTrackingSession(null);
@@ -229,8 +254,10 @@ class DefaultSafetyRepository implements SafetyRepository {
       guardianIds: profile.guardianIds,
       type: AlertType.sos,
       status: AlertStatus.active,
-      title: 'SOS activated',
-      description: '${profile.name} has triggered an emergency alert.',
+      title: autoReason == null ? 'SOS activated' : 'Automatic SOS activated',
+      description: autoReason == null
+          ? '${profile.name} has triggered an emergency alert.'
+          : '${profile.name} may need help. Reason: ${_autoReasonLabel(autoReason)}.',
       timestamp: now,
       locationLat: position.latitude,
       locationLng: position.longitude,
@@ -252,14 +279,23 @@ class DefaultSafetyRepository implements SafetyRepository {
       batteryLevel: batteryLevel,
     );
     await _profileRepository.updateLastLocationSync(profile.id, now);
+    final Map<String, dynamic> sosLogMetadata = <String, dynamic>{
+      'alertId': alertId,
+    };
+    if (autoReason != null) {
+      sosLogMetadata['autoReason'] = autoReason;
+    }
+
     await _alertRepository.createLog(
       ActivityLog(
         id: '${alertId}_log',
         userId: profile.id,
         eventType: LogEventType.sosTriggered,
-        message: 'SOS started and guardians notified.',
+        message: autoReason == null
+            ? 'SOS started and guardians notified.'
+            : 'Automatic SOS started from ${_autoReasonLabel(autoReason)}.',
         timestamp: now,
-        metadata: <String, dynamic>{'alertId': alertId},
+        metadata: sosLogMetadata,
       ),
     );
 
@@ -289,6 +325,42 @@ class DefaultSafetyRepository implements SafetyRepository {
     );
     _emitRuntimeState();
 
+    return alert;
+  }
+
+  @override
+  Future<SafetyAlert?> triggerAutoEmergency({
+    required UserProfile profile,
+    required UserSettings settings,
+    required String reason,
+    Map<String, Object?> metadata = const <String, Object?>{},
+  }) async {
+    if (profile.isEmergencyActive) {
+      AppLogger.warning(
+        'Auto emergency ignored because emergency mode is already active.',
+      );
+      return null;
+    }
+
+    final SafetyAlert alert = await triggerSos(
+      profile: profile,
+      settings: settings,
+      autoReason: reason,
+    );
+    await _alertRepository.createLog(
+      ActivityLog(
+        id: 'auto_sos_${DateTime.now().microsecondsSinceEpoch}',
+        userId: profile.id,
+        eventType: LogEventType.emergencyDetectionAutoSos,
+        message: 'Automatic SOS triggered: ${_autoReasonLabel(reason)}.',
+        timestamp: DateTime.now(),
+        metadata: <String, Object?>{
+          'alertId': alert.id,
+          'reason': reason,
+          ...metadata,
+        },
+      ),
+    );
     return alert;
   }
 
@@ -473,6 +545,7 @@ class DefaultSafetyRepository implements SafetyRepository {
     required UserProfile profile,
     required String description,
     String? title,
+    bool showLocalWarning = true,
   }) {
     return _createMissedCheckInIncident(
       profile: profile,
@@ -481,6 +554,7 @@ class DefaultSafetyRepository implements SafetyRepository {
       metadata: const <String, dynamic>{'source': 'timed_checkin'},
       localWarningBody:
           'Guardians have been notified about the missed check-in.',
+      showLocalWarning: showLocalWarning,
     );
   }
 
@@ -555,12 +629,14 @@ class DefaultSafetyRepository implements SafetyRepository {
         metadata: <String, dynamic>{'batteryLevel': batteryLevel},
       ),
     );
-    await _localNotificationsService.showLocalWarning(
-      title: alert.title,
-      body: isCritical
-          ? 'Last location was shared and emergency mode is starting.'
-          : 'Guardians can now see this battery warning.',
-    );
+    if (settings.batteryNotificationsEnabled) {
+      await _localNotificationsService.showLocalWarning(
+        title: alert.title,
+        body: isCritical
+            ? 'Last location was shared and emergency mode is starting.'
+            : 'Guardians can now see this battery warning.',
+      );
+    }
     await _preferencesService.setLastBatteryAlertLevel(threshold);
 
     if (isCritical && !profile.isEmergencyActive) {
@@ -635,10 +711,12 @@ class DefaultSafetyRepository implements SafetyRepository {
         },
       ),
     );
-    await _localNotificationsService.showLocalWarning(
-      title: 'Unsafe zone detected',
-      body: 'Guardians can see this location warning.',
-    );
+    if (settings.geofenceNotificationsEnabled) {
+      await _localNotificationsService.showLocalWarning(
+        title: 'Unsafe zone detected',
+        body: 'Guardians can see this location warning.',
+      );
+    }
     await _preferencesService.setActiveGeofenceZoneId(unsafeZone.id);
     return alert;
   }
@@ -729,6 +807,27 @@ class DefaultSafetyRepository implements SafetyRepository {
     final Position startPosition = await _locationRepository
         .getCurrentPosition();
     final bool startedLiveSharingForRoute = _liveLocationSubscription == null;
+
+    RoutePlan? routePlan;
+    try {
+      routePlan = await _routeService.fetchRoute(
+        startLat: startPosition.latitude,
+        startLng: startPosition.longitude,
+        destinationLat: destinationLat,
+        destinationLng: destinationLng,
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Route generation failed; falling back to straight-line monitoring',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    _currentRoutePosition = RoutePoint(
+      lat: startPosition.latitude,
+      lng: startPosition.longitude,
+    );
     _activeRouteTracking = RouteTrackingSession(
       startLat: startPosition.latitude,
       startLng: startPosition.longitude,
@@ -738,6 +837,9 @@ class DefaultSafetyRepository implements SafetyRepository {
       deviationThresholdMeters: AppConstants.routeDeviationThresholdMeters,
       deviationAlertSent: false,
       startedLiveSharingForRoute: startedLiveSharingForRoute,
+      encodedPolyline: routePlan?.encodedPolyline,
+      routeBounds: routePlan?.bounds,
+      routeSource: routePlan == null ? 'straight_line' : 'osrm',
     );
 
     await _persistRouteTrackingSession(_activeRouteTracking);
@@ -757,6 +859,7 @@ class DefaultSafetyRepository implements SafetyRepository {
   Future<void> stopRouteTracking({required String userId}) async {
     final RouteTrackingSession? routeTracking = _activeRouteTracking;
     _activeRouteTracking = null;
+    _currentRoutePosition = null;
     await _persistRouteTrackingSession(null);
     if (routeTracking?.startedLiveSharingForRoute == true &&
         _activeAlertId == null) {
@@ -775,6 +878,10 @@ class DefaultSafetyRepository implements SafetyRepository {
     }
 
     final Position position = await _locationRepository.getCurrentPosition();
+    _currentRoutePosition = RoutePoint(
+      lat: position.latitude,
+      lng: position.longitude,
+    );
     if (_liveLocationSubscription == null && _activeAlertId == null) {
       await _startLiveLocationFeed(
         userId: profile.id,
@@ -801,7 +908,7 @@ class DefaultSafetyRepository implements SafetyRepository {
       return null;
     }
 
-    final double deviationDistance = _distanceFromRouteLineMeters(
+    final double deviationDistance = _distanceFromRouteMeters(
       routeTracking,
       position,
     );
@@ -915,6 +1022,7 @@ class DefaultSafetyRepository implements SafetyRepository {
           '${profile.name} has not checked in during the active night monitoring window.',
       metadata: <String, dynamic>{'sessionId': sessionId, 'source': 'night'},
       localWarningBody: 'A missed night check-in alert was sent to guardians.',
+      showLocalWarning: settings.checkInNotificationsEnabled,
     );
     await _preferencesService.setLastNightMonitoringAlertSession(sessionId);
   }
@@ -934,6 +1042,7 @@ class DefaultSafetyRepository implements SafetyRepository {
     required String description,
     required Map<String, dynamic> metadata,
     required String localWarningBody,
+    required bool showLocalWarning,
   }) async {
     final DateTime now = DateTime.now();
     final Position? lastKnownPosition = await _locationRepository
@@ -987,10 +1096,12 @@ class DefaultSafetyRepository implements SafetyRepository {
       ),
     );
     await _profileRepository.updateLastLocationSync(profile.id, now);
-    await _localNotificationsService.showLocalWarning(
-      title: title,
-      body: localWarningBody,
-    );
+    if (showLocalWarning) {
+      await _localNotificationsService.showLocalWarning(
+        title: title,
+        body: localWarningBody,
+      );
+    }
     return alert;
   }
 
@@ -1122,6 +1233,12 @@ class DefaultSafetyRepository implements SafetyRepository {
     _activeRouteTracking = _decodeRouteTrackingState(
       _preferencesService.routeTrackingStateJson,
     );
+    if (_activeRouteTracking != null) {
+      _currentRoutePosition = RoutePoint(
+        lat: _activeRouteTracking!.startLat,
+        lng: _activeRouteTracking!.startLng,
+      );
+    }
   }
 
   SafetyTimerState? _decodeSafetyTimerState(String? rawValue) {
@@ -1182,24 +1299,87 @@ class DefaultSafetyRepository implements SafetyRepository {
     );
   }
 
+  double _distanceFromRouteMeters(
+    RouteTrackingSession session,
+    Position currentPosition,
+  ) {
+    final String? encodedPolyline = session.encodedPolyline;
+    if (encodedPolyline != null && encodedPolyline.isNotEmpty) {
+      try {
+        final List<RoutePoint> routePoints = _routeService.decodePolyline(
+          encodedPolyline,
+        );
+        if (routePoints.length >= 2) {
+          return _distanceFromPolylineMeters(routePoints, currentPosition);
+        }
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Route polyline decode failed; falling back to straight-line distance',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+
+    return _distanceFromRouteLineMeters(session, currentPosition);
+  }
+
+  double _distanceFromPolylineMeters(
+    List<RoutePoint> routePoints,
+    Position currentPosition,
+  ) {
+    double? nearestDistance;
+    for (int index = 0; index < routePoints.length - 1; index++) {
+      final double distance = _distanceFromSegmentMeters(
+        startLat: routePoints[index].lat,
+        startLng: routePoints[index].lng,
+        endLat: routePoints[index + 1].lat,
+        endLng: routePoints[index + 1].lng,
+        currentLat: currentPosition.latitude,
+        currentLng: currentPosition.longitude,
+      );
+      nearestDistance = nearestDistance == null
+          ? distance
+          : math.min(nearestDistance, distance);
+    }
+    return nearestDistance ?? double.infinity;
+  }
+
   double _distanceFromRouteLineMeters(
     RouteTrackingSession session,
     Position currentPosition,
   ) {
+    return _distanceFromSegmentMeters(
+      startLat: session.startLat,
+      startLng: session.startLng,
+      endLat: session.destinationLat,
+      endLng: session.destinationLng,
+      currentLat: currentPosition.latitude,
+      currentLng: currentPosition.longitude,
+    );
+  }
+
+  double _distanceFromSegmentMeters({
+    required double startLat,
+    required double startLng,
+    required double endLat,
+    required double endLng,
+    required double currentLat,
+    required double currentLng,
+  }) {
     const double metersPerDegreeLat = 111320;
-    final double midLatRadians =
-        ((session.startLat + session.destinationLat) / 2) * (math.pi / 180);
+    final double midLatRadians = ((startLat + endLat) / 2) * (math.pi / 180);
     final double metersPerDegreeLng =
         metersPerDegreeLat * math.cos(midLatRadians);
 
     final _Point start = _Point(0, 0);
     final _Point end = _Point(
-      (session.destinationLng - session.startLng) * metersPerDegreeLng,
-      (session.destinationLat - session.startLat) * metersPerDegreeLat,
+      (endLng - startLng) * metersPerDegreeLng,
+      (endLat - startLat) * metersPerDegreeLat,
     );
     final _Point current = _Point(
-      (currentPosition.longitude - session.startLng) * metersPerDegreeLng,
-      (currentPosition.latitude - session.startLat) * metersPerDegreeLat,
+      (currentLng - startLng) * metersPerDegreeLng,
+      (currentLat - startLat) * metersPerDegreeLat,
     );
 
     final double lineLengthSquared = end.x * end.x + end.y * end.y;
@@ -1219,6 +1399,35 @@ class DefaultSafetyRepository implements SafetyRepository {
     return math.sqrt(dx * dx + dy * dy);
   }
 
+  @override
+  Future<void> logEmergencyDetection({
+    required UserProfile profile,
+    required LogEventType eventType,
+    required String message,
+    required Map<String, Object?> metadata,
+  }) {
+    return _alertRepository.createLog(
+      ActivityLog(
+        id: 'detection_${DateTime.now().microsecondsSinceEpoch}',
+        userId: profile.id,
+        eventType: eventType,
+        message: message,
+        timestamp: DateTime.now(),
+        metadata: metadata,
+      ),
+    );
+  }
+
+  String _autoReasonLabel(String reason) {
+    return switch (reason) {
+      'fall_detected' => 'possible fall detected',
+      'abnormal_movement' => 'unusual movement detected',
+      'no_response' => 'no response to safety confirmation',
+      'panic_trigger' => 'manual panic trigger',
+      _ => reason.replaceAll('_', ' '),
+    };
+  }
+
   void _emitRuntimeState() {
     _runtimeController.add(
       SafetyRuntimeState(
@@ -1230,6 +1439,7 @@ class DefaultSafetyRepository implements SafetyRepository {
         isTrustedPlaceActive: _isTrustedPlaceActive,
         isNightMonitoringActive: _isNightMonitoringActive,
         activeRouteTracking: _activeRouteTracking,
+        currentRoutePosition: _currentRoutePosition,
         safetyTimer: _activeSafetyTimer,
       ),
     );
@@ -1239,6 +1449,7 @@ class DefaultSafetyRepository implements SafetyRepository {
   Future<void> dispose() async {
     await _liveLocationSubscription?.cancel();
     await _audioRecordingService.dispose();
+    _routeService.dispose();
     await _runtimeController.close();
   }
 }

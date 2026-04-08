@@ -14,13 +14,18 @@ class AppConstants {
   static const int runtimeHeartbeatIntervalSeconds = 1;
   static const int routeEvaluationIntervalSeconds = 15;
   static const int liveLocationDistanceFilterMeters = 5;
+  static const int emergencyDetectionConfirmationSeconds = 12;
+  static const int emergencyDetectionCooldownSeconds = 45;
   static const int lowBatteryWarningFallback = 15;
   static const int lowBatteryCriticalFallback = 5;
   static const int checkInPromptTimeoutSeconds = 60;
+  static const int backgroundMonitorIntervalMinimumMinutes = 15;
   static const int nightMonitoringStartHour = 22;
   static const int nightMonitoringEndHour = 6;
-  static const double routeDeviationThresholdMeters = 150;
+  static const double routeDeviationThresholdMeters = 75;
   static const double routeCompletionThresholdMeters = 75;
+  static const int routeFetchTimeoutSeconds = 8;
+  static const String osrmRouteHost = 'router.project-osrm.org';
   static const String onboardingSeenKey = 'onboarding_seen';
   static const String permissionSetupCompletedKey =
       'permission_setup_completed';
@@ -31,6 +36,15 @@ class AppConstants {
   static const String activeGeofenceZoneIdKey = 'active_geofence_zone_id';
   static const String safetyTimerStateKey = 'safety_timer_state';
   static const String routeTrackingStateKey = 'route_tracking_state';
+  static const String backgroundCheckInPromptStartedAtKey =
+      'background_check_in_prompt_started_at';
+  static const String pendingGeofenceEventJsonKey =
+      'pending_geofence_event_json';
+  static const String backgroundMonitorTaskUniqueName =
+      'safely_background_monitor';
+  static const String backgroundMonitorTaskName =
+      'safely_background_monitor_task';
+  static const String geofenceMethodChannel = 'com.bitlynx.safely/geofencing';
   static const String alertsNotificationChannelId = 'safely_alerts';
   static const String alertsNotificationChannelName = 'Safely Alerts';
   static const String alertsNotificationChannelDescription =
@@ -103,6 +117,16 @@ class FirestoreFields {
   static const String liveLocationEnabled = 'liveLocationEnabled';
   static const String trustedPlaceModeEnabled = 'trustedPlaceModeEnabled';
   static const String nightModeMonitoringEnabled = 'nightModeMonitoringEnabled';
+  static const String sosNotificationsEnabled = 'sosNotificationsEnabled';
+  static const String batteryNotificationsEnabled =
+      'batteryNotificationsEnabled';
+  static const String geofenceNotificationsEnabled =
+      'geofenceNotificationsEnabled';
+  static const String checkInNotificationsEnabled =
+      'checkInNotificationsEnabled';
+  static const String emergencyDetectionEnabled = 'emergencyDetectionEnabled';
+  static const String fallDetectionEnabled = 'fallDetectionEnabled';
+  static const String movementDetectionEnabled = 'movementDetectionEnabled';
   static const String eventType = 'eventType';
   static const String message = 'message';
   static const String metadata = 'metadata';

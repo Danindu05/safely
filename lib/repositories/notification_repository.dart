@@ -8,6 +8,7 @@ import '../core/services/notification_intent_service.dart';
 import '../core/utils/app_logger.dart';
 import '../core/utils/retry_helper.dart';
 import '../core/constants/app_constants.dart';
+import '../models/user_settings.dart';
 import 'profile_repository.dart';
 
 abstract class NotificationRepository {
@@ -37,6 +38,8 @@ class FirebaseNotificationRepository implements NotificationRepository {
   final ProfileRepository _profileRepository;
   StreamSubscription<String>? _tokenSubscription;
   StreamSubscription<RemoteMessage>? _messageOpenedSubscription;
+  StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  String? _currentUserId;
 
   @override
   Future<void> initialize() async {
@@ -53,9 +56,25 @@ class FirebaseNotificationRepository implements NotificationRepository {
           );
         },
       );
-      _messagingService.onMessage.listen(
-        _localNotificationsService.showRemoteMessage,
-      );
+      await _foregroundSubscription?.cancel();
+      _foregroundSubscription = _messagingService.onMessage.listen((
+        RemoteMessage message,
+      ) async {
+        try {
+          final bool shouldShow = await _shouldShowForegroundMessage(message);
+          if (!shouldShow) {
+            AppLogger.info('Foreground notification suppressed by settings.');
+            return;
+          }
+          await _localNotificationsService.showRemoteMessage(message);
+        } catch (error, stackTrace) {
+          AppLogger.error(
+            'Foreground notification handling failed',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
+      });
       final RemoteMessage? initialMessage = await _messagingService
           .getInitialMessage();
       if (initialMessage != null) {
@@ -72,6 +91,7 @@ class FirebaseNotificationRepository implements NotificationRepository {
 
   @override
   Future<void> syncCurrentToken(String userId) async {
+    _currentUserId = userId;
     await _tokenSubscription?.cancel();
     _tokenSubscription = _messagingService.onTokenRefresh.listen(
       (String token) async {
@@ -117,4 +137,41 @@ class FirebaseNotificationRepository implements NotificationRepository {
 
   @override
   Stream<RemoteMessage> get foregroundMessages => _messagingService.onMessage;
+
+  Future<bool> _shouldShowForegroundMessage(RemoteMessage message) async {
+    final String? userId = _currentUserId;
+    if (userId == null || userId.isEmpty) {
+      return true;
+    }
+
+    final String type = (message.data['type'] as String?)?.trim() ?? '';
+    if (type.isEmpty) {
+      return true;
+    }
+
+    try {
+      final UserSettings? settings = await _profileRepository
+          .watchSettings(userId)
+          .first
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      final UserSettings effectiveSettings =
+          settings ?? UserSettings.defaults(userId);
+      return switch (type) {
+        'sos' => effectiveSettings.sosNotificationsEnabled,
+        'low_battery' => effectiveSettings.batteryNotificationsEnabled,
+        'geofence' ||
+        'route_deviation' => effectiveSettings.geofenceNotificationsEnabled,
+        'missed_checkin' ||
+        'manual_checkin' => effectiveSettings.checkInNotificationsEnabled,
+        _ => true,
+      };
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Could not read notification settings; showing notification by default',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return true;
+    }
+  }
 }

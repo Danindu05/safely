@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/widgets/section_card.dart';
+import '../../models/user_settings.dart';
 import '../../repositories/auth_repository.dart';
+import '../../repositories/profile_repository.dart';
 import '../../viewmodels/notification_settings_viewmodel.dart';
 
 class NotificationSettingsScreen extends StatelessWidget {
@@ -14,8 +16,11 @@ class NotificationSettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<NotificationSettingsViewModel>(
-      create: (_) =>
-          NotificationSettingsViewModel(context.read<AuthRepository>()),
+      create: (_) => NotificationSettingsViewModel(
+        authRepository: context.read<AuthRepository>(),
+        profileRepository: context.read<ProfileRepository>(),
+        guardianId: guardianId,
+      ),
       child: const _NotificationSettingsScreenBody(),
     );
   }
@@ -33,6 +38,13 @@ class _NotificationSettingsScreenBody extends StatelessWidget {
             NotificationSettingsViewModel viewModel,
             Widget? child,
           ) {
+            final UserSettings? settings = viewModel.settings;
+            if (settings == null) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+
             return Scaffold(
               appBar: AppBar(title: const Text('Notification settings')),
               body: ListView(
@@ -41,29 +53,60 @@ class _NotificationSettingsScreenBody extends StatelessWidget {
                   SectionCard(
                     title: 'Guardian alert preferences',
                     subtitle:
-                        'These controls are app-side preferences prepared for repeated alert behavior and escalation work later.',
+                        'These settings are saved to Firestore and enforced before guardian push notifications are sent.',
                     child: Column(
                       children: <Widget>[
                         SwitchListTile(
-                          value: viewModel.soundEnabled,
-                          onChanged: viewModel.toggleSound,
-                          title: const Text('Sound'),
+                          value: settings.sosNotificationsEnabled,
+                          onChanged: (bool value) => viewModel.save(
+                            settings.copyWith(sosNotificationsEnabled: value),
+                          ),
+                          title: const Text('SOS alerts'),
+                          subtitle: const Text(
+                            'Highest priority emergency notifications.',
+                          ),
                         ),
                         SwitchListTile(
-                          value: viewModel.vibrationEnabled,
-                          onChanged: viewModel.toggleVibration,
-                          title: const Text('Vibrate'),
+                          value: settings.batteryNotificationsEnabled,
+                          onChanged: (bool value) => viewModel.save(
+                            settings.copyWith(
+                              batteryNotificationsEnabled: value,
+                            ),
+                          ),
+                          title: const Text('Battery alerts'),
                         ),
                         SwitchListTile(
-                          value: viewModel.repeatedAlertsEnabled,
-                          onChanged: viewModel.toggleRepeatedAlerts,
-                          title: const Text('Repeated alert behavior'),
+                          value: settings.geofenceNotificationsEnabled,
+                          onChanged: (bool value) => viewModel.save(
+                            settings.copyWith(
+                              geofenceNotificationsEnabled: value,
+                            ),
+                          ),
+                          title: const Text('Geofence and route alerts'),
                         ),
                         SwitchListTile(
-                          value: viewModel.highPriorityOnly,
-                          onChanged: viewModel.toggleHighPriorityOnly,
-                          title: const Text('High priority alerts only'),
+                          value: settings.checkInNotificationsEnabled,
+                          onChanged: (bool value) => viewModel.save(
+                            settings.copyWith(
+                              checkInNotificationsEnabled: value,
+                            ),
+                          ),
+                          title: const Text('Check-in alerts'),
                         ),
+                        if (viewModel.errorMessage != null) ...<Widget>[
+                          const SizedBox(height: 12),
+                          Text(
+                            viewModel.errorMessage!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ],
+                        if (viewModel.infoMessage != null) ...<Widget>[
+                          const SizedBox(height: 12),
+                          Text(viewModel.infoMessage!),
+                        ],
+                        const Divider(height: 24),
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: const Text('Sign out'),

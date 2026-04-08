@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
@@ -6,8 +8,10 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/date_time_formatter.dart';
 import '../../core/widgets/empty_state_card.dart';
 import '../../core/widgets/metric_tile.dart';
+import '../../core/widgets/safely_map.dart';
 import '../../core/widgets/section_card.dart';
 import '../../core/widgets/status_chip.dart';
+import '../../models/route_geometry.dart';
 import '../../models/route_tracking_session.dart';
 import '../../models/safety_alert.dart';
 import '../../models/safety_timer_state.dart';
@@ -443,6 +447,17 @@ class SafemateHomeScreen extends StatelessWidget {
                         Text(
                           'Threshold: ${activeRoute.deviationThresholdMeters.toStringAsFixed(0)}m from the planned path.',
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          activeRoute.routeSource == 'osrm'
+                              ? 'Route source: road-aware map route.'
+                              : 'Route source: straight-line fallback.',
+                        ),
+                        const SizedBox(height: 12),
+                        _RoutePreviewMap(
+                          session: activeRoute,
+                          currentPosition: runtimeState.currentRoutePosition,
+                        ),
                       ],
                       const SizedBox(height: 12),
                       Wrap(
@@ -545,6 +560,102 @@ class _RouteDestination {
 
   final double latitude;
   final double longitude;
+}
+
+class _RoutePreviewMap extends StatelessWidget {
+  const _RoutePreviewMap({
+    required this.session,
+    required this.currentPosition,
+  });
+
+  final RouteTrackingSession session;
+  final RoutePoint? currentPosition;
+
+  @override
+  Widget build(BuildContext context) {
+    final RoutePoint current =
+        currentPosition ??
+        RoutePoint(lat: session.startLat, lng: session.startLng);
+    final List<RoutePoint> routePoints = _routePoints(session);
+    final List<LatLng> polylinePoints = routePoints
+        .map((RoutePoint point) => LatLng(point.lat, point.lng))
+        .toList(growable: false);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+      child: SizedBox(
+        height: 220,
+        child: SafelyMap(
+          center: LatLng(current.lat, current.lng),
+          zoom: 14,
+          polylines: polylinePoints.length < 2
+              ? const <Polyline>[]
+              : <Polyline>[
+                  Polyline(
+                    points: polylinePoints,
+                    strokeWidth: 5,
+                    color: AppColors.navy,
+                    borderStrokeWidth: 2,
+                    borderColor: Colors.white,
+                  ),
+                ],
+          markers: <Marker>[
+            Marker(
+              point: LatLng(session.startLat, session.startLng),
+              width: 36,
+              height: 36,
+              child: const Icon(
+                Icons.trip_origin,
+                color: AppColors.safe,
+                size: 28,
+              ),
+            ),
+            Marker(
+              point: LatLng(session.destinationLat, session.destinationLng),
+              width: 40,
+              height: 40,
+              child: const Icon(
+                Icons.place,
+                color: AppColors.emergency,
+                size: 36,
+              ),
+            ),
+            Marker(
+              point: LatLng(current.lat, current.lng),
+              width: 42,
+              height: 42,
+              child: const Icon(
+                Icons.my_location,
+                color: AppColors.warning,
+                size: 34,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<RoutePoint> _routePoints(RouteTrackingSession session) {
+    final String? encodedPolyline = session.encodedPolyline;
+    if (encodedPolyline != null && encodedPolyline.isNotEmpty) {
+      try {
+        final List<RoutePoint> decoded = RouteGeometryCodec.decodePolyline(
+          encodedPolyline,
+        );
+        if (decoded.length >= 2) {
+          return decoded;
+        }
+      } catch (_) {
+        // Visual fallback only; repository-side deviation logic already logs.
+      }
+    }
+
+    return <RoutePoint>[
+      RoutePoint(lat: session.startLat, lng: session.startLng),
+      RoutePoint(lat: session.destinationLat, lng: session.destinationLng),
+    ];
+  }
 }
 
 String _formatDuration(Duration duration) {

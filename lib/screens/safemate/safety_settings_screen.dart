@@ -92,6 +92,39 @@ class _SafetySettingsScreenBody extends StatelessWidget {
                       title: const Text('Enable check-ins'),
                     ),
                     SwitchListTile(
+                      value: settings.emergencyDetectionEnabled,
+                      onChanged: (bool value) => viewModel.save(
+                        settings.copyWith(emergencyDetectionEnabled: value),
+                      ),
+                      title: const Text('Emergency detection'),
+                      subtitle: const Text(
+                        'Uses phone motion sensors while the app is active and asks before sending SOS.',
+                      ),
+                    ),
+                    SwitchListTile(
+                      value: settings.fallDetectionEnabled,
+                      onChanged: settings.emergencyDetectionEnabled
+                          ? (bool value) => viewModel.save(
+                              settings.copyWith(fallDetectionEnabled: value),
+                            )
+                          : null,
+                      title: const Text('Fall and impact detection'),
+                    ),
+                    SwitchListTile(
+                      value: settings.movementDetectionEnabled,
+                      onChanged: settings.emergencyDetectionEnabled
+                          ? (bool value) => viewModel.save(
+                              settings.copyWith(
+                                movementDetectionEnabled: value,
+                              ),
+                            )
+                          : null,
+                      title: const Text('Abnormal movement detection'),
+                      subtitle: const Text(
+                        'Looks for erratic movement or sudden stop patterns.',
+                      ),
+                    ),
+                    SwitchListTile(
                       value: settings.trustedPlaceModeEnabled,
                       onChanged: (bool value) => viewModel.save(
                         settings.copyWith(trustedPlaceModeEnabled: value),

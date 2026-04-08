@@ -1,35 +1,45 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
 
+import '../models/user_settings.dart';
 import '../repositories/auth_repository.dart';
+import '../repositories/profile_repository.dart';
+import 'base_viewmodel.dart';
 
-class NotificationSettingsViewModel extends ChangeNotifier {
-  NotificationSettingsViewModel(this._authRepository);
+class NotificationSettingsViewModel extends BaseViewModel {
+  NotificationSettingsViewModel({
+    required AuthRepository authRepository,
+    required ProfileRepository profileRepository,
+    required String guardianId,
+  }) : _authRepository = authRepository,
+       _profileRepository = profileRepository,
+       _guardianId = guardianId {
+    _settings = UserSettings.defaults(_guardianId);
+    _subscription = _profileRepository.watchSettings(_guardianId).listen((
+      UserSettings? settings,
+    ) {
+      _settings = settings ?? UserSettings.defaults(_guardianId);
+      notifyListeners();
+    });
+  }
 
   final AuthRepository _authRepository;
-  bool soundEnabled = true;
-  bool vibrationEnabled = true;
-  bool repeatedAlertsEnabled = true;
-  bool highPriorityOnly = false;
+  final ProfileRepository _profileRepository;
+  final String _guardianId;
+  StreamSubscription<UserSettings?>? _subscription;
+
+  UserSettings? _settings;
   bool isSigningOut = false;
 
-  void toggleSound(bool value) {
-    soundEnabled = value;
-    notifyListeners();
-  }
+  UserSettings? get settings => _settings;
 
-  void toggleVibration(bool value) {
-    vibrationEnabled = value;
-    notifyListeners();
-  }
-
-  void toggleRepeatedAlerts(bool value) {
-    repeatedAlertsEnabled = value;
-    notifyListeners();
-  }
-
-  void toggleHighPriorityOnly(bool value) {
-    highPriorityOnly = value;
-    notifyListeners();
+  Future<void> save(UserSettings settings) async {
+    await guard<void>(
+      () => _profileRepository.saveSettings(settings),
+      operationName: 'save notification settings',
+    );
+    if (errorMessage == null) {
+      setInfo('Notification settings saved.');
+    }
   }
 
   Future<void> signOut() async {
@@ -46,5 +56,11 @@ class NotificationSettingsViewModel extends ChangeNotifier {
       isSigningOut = false;
       notifyListeners();
     }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
   }
 }

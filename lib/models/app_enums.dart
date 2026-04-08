@@ -176,6 +176,9 @@ enum LogEventType {
   safetyTimerStarted,
   safetyTimerCanceled,
   batteryEmergencyStarted,
+  emergencyDetectionTriggered,
+  emergencyDetectionCanceled,
+  emergencyDetectionAutoSos,
   guardianLinked,
   guardianRemoved,
 }
@@ -208,6 +211,12 @@ LogEventType? logEventTypeFromValue(String? value) {
       return LogEventType.safetyTimerCanceled;
     case 'battery_emergency_started':
       return LogEventType.batteryEmergencyStarted;
+    case 'emergency_detection_triggered':
+      return LogEventType.emergencyDetectionTriggered;
+    case 'emergency_detection_canceled':
+      return LogEventType.emergencyDetectionCanceled;
+    case 'emergency_detection_auto_sos':
+      return LogEventType.emergencyDetectionAutoSos;
     case 'guardian_linked':
       return LogEventType.guardianLinked;
     case 'guardian_removed':
@@ -232,6 +241,9 @@ extension LogEventTypeX on LogEventType {
     LogEventType.safetyTimerStarted => 'safety_timer_started',
     LogEventType.safetyTimerCanceled => 'safety_timer_canceled',
     LogEventType.batteryEmergencyStarted => 'battery_emergency_started',
+    LogEventType.emergencyDetectionTriggered => 'emergency_detection_triggered',
+    LogEventType.emergencyDetectionCanceled => 'emergency_detection_canceled',
+    LogEventType.emergencyDetectionAutoSos => 'emergency_detection_auto_sos',
     LogEventType.guardianLinked => 'guardian_linked',
     LogEventType.guardianRemoved => 'guardian_removed',
   };
@@ -250,6 +262,9 @@ extension LogEventTypeX on LogEventType {
     LogEventType.safetyTimerStarted => 'Safety timer started',
     LogEventType.safetyTimerCanceled => 'Safety timer canceled',
     LogEventType.batteryEmergencyStarted => 'Critical battery emergency',
+    LogEventType.emergencyDetectionTriggered => 'Emergency detection',
+    LogEventType.emergencyDetectionCanceled => 'Detection canceled',
+    LogEventType.emergencyDetectionAutoSos => 'Auto SOS',
     LogEventType.guardianLinked => 'Guardian linked',
     LogEventType.guardianRemoved => 'Guardian removed',
   };

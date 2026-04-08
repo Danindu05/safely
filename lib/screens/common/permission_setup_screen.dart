@@ -54,7 +54,7 @@ class _PermissionSetupScreenBody extends StatelessWidget {
                             icon: Icons.location_on_outlined,
                             title: 'Location',
                             description:
-                                'Needed for SOS, live sharing, geofences, and check-ins.',
+                                'Needed for SOS, live sharing, geofences, and check-ins. Background access improves OS geofence reliability.',
                             state: permissionHealth.location,
                             onRequest: viewModel.requestLocation,
                           ),

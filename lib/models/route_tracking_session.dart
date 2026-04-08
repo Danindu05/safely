@@ -1,3 +1,5 @@
+import 'route_geometry.dart';
+
 class RouteTrackingSession {
   const RouteTrackingSession({
     required this.startLat,
@@ -8,6 +10,9 @@ class RouteTrackingSession {
     required this.deviationThresholdMeters,
     required this.deviationAlertSent,
     required this.startedLiveSharingForRoute,
+    required this.encodedPolyline,
+    required this.routeBounds,
+    required this.routeSource,
   });
 
   final double startLat;
@@ -18,6 +23,9 @@ class RouteTrackingSession {
   final double deviationThresholdMeters;
   final bool deviationAlertSent;
   final bool startedLiveSharingForRoute;
+  final String? encodedPolyline;
+  final RouteBounds? routeBounds;
+  final String routeSource;
 
   factory RouteTrackingSession.fromMap(Map<String, dynamic> map) {
     return RouteTrackingSession(
@@ -33,6 +41,16 @@ class RouteTrackingSession {
       deviationAlertSent: map['deviationAlertSent'] as bool? ?? false,
       startedLiveSharingForRoute:
           map['startedLiveSharingForRoute'] as bool? ?? false,
+      encodedPolyline:
+          (map['encodedPolyline'] as String?)?.trim().isEmpty == true
+          ? null
+          : map['encodedPolyline'] as String?,
+      routeBounds: map['routeBounds'] is Map
+          ? RouteBounds.fromMap(
+              (map['routeBounds'] as Map).cast<String, dynamic>(),
+            )
+          : null,
+      routeSource: (map['routeSource'] as String?)?.trim() ?? 'straight_line',
     );
   }
 
@@ -46,6 +64,9 @@ class RouteTrackingSession {
       'deviationThresholdMeters': deviationThresholdMeters,
       'deviationAlertSent': deviationAlertSent,
       'startedLiveSharingForRoute': startedLiveSharingForRoute,
+      'encodedPolyline': encodedPolyline,
+      'routeBounds': routeBounds?.toMap(),
+      'routeSource': routeSource,
     };
   }
 
@@ -58,6 +79,9 @@ class RouteTrackingSession {
     double? deviationThresholdMeters,
     bool? deviationAlertSent,
     bool? startedLiveSharingForRoute,
+    String? encodedPolyline,
+    RouteBounds? routeBounds,
+    String? routeSource,
   }) {
     return RouteTrackingSession(
       startLat: startLat ?? this.startLat,
@@ -70,6 +94,9 @@ class RouteTrackingSession {
       deviationAlertSent: deviationAlertSent ?? this.deviationAlertSent,
       startedLiveSharingForRoute:
           startedLiveSharingForRoute ?? this.startedLiveSharingForRoute,
+      encodedPolyline: encodedPolyline ?? this.encodedPolyline,
+      routeBounds: routeBounds ?? this.routeBounds,
+      routeSource: routeSource ?? this.routeSource,
     );
   }
 }

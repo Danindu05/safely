@@ -57,26 +57,42 @@ exports.sendGuardianAlert = onDocumentCreated(
     const guardianSnapshots = await Promise.all(
       guardianIds.map(async (guardianId) => {
         try {
-          const snapshot = await firestore.collection("users").doc(guardianId).get();
-          return {guardianId, snapshot};
+          const [snapshot, settingsSnapshot] = await Promise.all([
+            firestore.collection("users").doc(guardianId).get(),
+            firestore.collection("settings").doc(guardianId).get(),
+          ]);
+          return {guardianId, snapshot, settingsSnapshot};
         } catch (error) {
           logger.error("Failed to load guardian profile.", {
             alertId,
             guardianId,
             error: error instanceof Error ? error.message : String(error),
           });
-          return {guardianId, snapshot: null};
+          return {guardianId, snapshot: null, settingsSnapshot: null};
         }
       }),
     );
 
     const tokens = [];
+    const alertType = String(alert.type ?? "");
     for (const item of guardianSnapshots) {
       const guardianSnapshot = item.snapshot;
       if (!guardianSnapshot || !guardianSnapshot.exists) {
         logger.info("Skipping guardian because the user document was not found.", {
           alertId,
           guardianId: item.guardianId,
+        });
+        continue;
+      }
+
+      const settings = item.settingsSnapshot && item.settingsSnapshot.exists ?
+        item.settingsSnapshot.data() :
+        {};
+      if (!notificationsEnabledForAlert(settings, alertType)) {
+        logger.info("Skipping guardian because notification category is disabled.", {
+          alertId,
+          guardianId: item.guardianId,
+          alertType,
         });
         continue;
       }
@@ -109,7 +125,7 @@ exports.sendGuardianAlert = onDocumentCreated(
       data: {
         alertId,
         userId,
-        type: String(alert.type ?? ""),
+        type: alertType,
         title: String(alert.title ?? ""),
         description: String(alert.description ?? ""),
         locationLat: alert.locationLat == null ? "" : String(alert.locationLat),
@@ -164,3 +180,27 @@ exports.sendGuardianAlert = onDocumentCreated(
     }
   },
 );
+
+function notificationsEnabledForAlert(settings, alertType) {
+  const valueOrDefault = (key) => {
+    if (!settings || typeof settings[key] !== "boolean") {
+      return true;
+    }
+    return settings[key];
+  };
+
+  switch (alertType) {
+    case "sos":
+      return valueOrDefault("sosNotificationsEnabled");
+    case "low_battery":
+      return valueOrDefault("batteryNotificationsEnabled");
+    case "geofence":
+    case "route_deviation":
+      return valueOrDefault("geofenceNotificationsEnabled");
+    case "missed_checkin":
+    case "manual_checkin":
+      return valueOrDefault("checkInNotificationsEnabled");
+    default:
+      return true;
+  }
+}

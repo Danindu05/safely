@@ -12,6 +12,7 @@ class SafelyMap extends StatelessWidget {
     this.zoom = 14,
     this.markers = const <Marker>[],
     this.circles = const <CircleMarker>[],
+    this.polylines = const <Polyline>[],
     this.onLongPress,
   });
 
@@ -19,6 +20,7 @@ class SafelyMap extends StatelessWidget {
   final double zoom;
   final List<Marker> markers;
   final List<CircleMarker> circles;
+  final List<Polyline> polylines;
   final void Function(LatLng point)? onLongPress;
 
   Future<void> _openAttribution() {
@@ -32,7 +34,7 @@ class SafelyMap extends StatelessWidget {
   Widget build(BuildContext context) {
     return FlutterMap(
       key: ValueKey<String>(
-        '${center.latitude}_${center.longitude}_${zoom}_${markers.length}_${circles.length}',
+        '${center.latitude}_${center.longitude}_${zoom}_${markers.length}_${circles.length}_${polylines.length}',
       ),
       options: MapOptions(
         initialCenter: center,
@@ -46,6 +48,7 @@ class SafelyMap extends StatelessWidget {
           urlTemplate: AppConstants.openStreetMapTileUrl,
           userAgentPackageName: AppConstants.mapUserAgentPackageName,
         ),
+        if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
         if (circles.isNotEmpty) CircleLayer(circles: circles),
         if (markers.isNotEmpty) MarkerLayer(markers: markers),
         RichAttributionWidget(

@@ -15,18 +15,22 @@ import '../../repositories/notification_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/safety_repository.dart';
 import 'audio_recording_service.dart';
+import 'background_monitoring_service.dart';
 import 'battery_service.dart';
 import 'connectivity_service.dart';
+import 'emergency_detection_service.dart';
 import 'firebase_auth_service.dart';
 import 'firebase_messaging_service.dart';
 import 'firebase_storage_service.dart';
 import 'firestore_service.dart';
+import 'geofence_service.dart';
 import 'local_notifications_service.dart';
 import 'location_service.dart';
 import 'notification_intent_service.dart';
 import 'permissions_service.dart';
 import 'preferences_service.dart';
 import 'realtime_database_service.dart';
+import 'route_service.dart';
 
 class AppDependencies {
   AppDependencies({
@@ -34,6 +38,9 @@ class AppDependencies {
     required this.permissionsService,
     required this.connectivityService,
     required this.notificationIntentService,
+    required this.backgroundMonitoringService,
+    required this.geofenceRegistrationService,
+    required this.emergencyDetectionService,
     required this.authRepository,
     required this.profileRepository,
     required this.alertRepository,
@@ -46,6 +53,9 @@ class AppDependencies {
   final PermissionsService permissionsService;
   final ConnectivityService connectivityService;
   final NotificationIntentService notificationIntentService;
+  final BackgroundMonitoringService backgroundMonitoringService;
+  final GeofenceRegistrationService geofenceRegistrationService;
+  final EmergencyDetectionService emergencyDetectionService;
   final AuthRepository authRepository;
   final ProfileRepository profileRepository;
   final AlertRepository alertRepository;
@@ -82,6 +92,13 @@ class AppDependencies {
     final AudioRecordingService audioRecordingService = AudioRecordingService(
       AudioRecorder(),
     );
+    final RouteService routeService = RouteService();
+    final BackgroundMonitoringService backgroundMonitoringService =
+        BackgroundMonitoringService();
+    final GeofenceRegistrationService geofenceRegistrationService =
+        GeofenceRegistrationService();
+    final EmergencyDetectionService emergencyDetectionService =
+        EmergencyDetectionService();
 
     final PreferencesService preferencesService = PreferencesService(
       sharedPreferences,
@@ -116,17 +133,22 @@ class AppDependencies {
       batteryService: batteryService,
       audioRecordingService: audioRecordingService,
       storageService: storageService,
+      routeService: routeService,
       preferencesService: preferencesService,
       localNotificationsService: localNotificationsService,
     );
 
     await notificationRepository.initialize();
+    await backgroundMonitoringService.initialize();
 
     return AppDependencies(
       preferencesService: preferencesService,
       permissionsService: permissionsService,
       connectivityService: connectivityService,
       notificationIntentService: notificationIntentService,
+      backgroundMonitoringService: backgroundMonitoringService,
+      geofenceRegistrationService: geofenceRegistrationService,
+      emergencyDetectionService: emergencyDetectionService,
       authRepository: authRepository,
       profileRepository: profileRepository,
       alertRepository: alertRepository,
