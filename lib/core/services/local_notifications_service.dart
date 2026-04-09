@@ -41,7 +41,18 @@ class LocalNotificationsService {
 
   Future<void> showRemoteMessage(RemoteMessage message) async {
     final RemoteNotification? notification = message.notification;
-    if (notification == null) {
+    final String title =
+        notification?.title ??
+        ((message.data['title'] as String?)?.trim().isNotEmpty ?? false
+            ? (message.data['title'] as String).trim()
+            : 'Safely');
+    final String body =
+        notification?.body ??
+        ((message.data['description'] as String?)?.trim().isNotEmpty ?? false
+            ? (message.data['description'] as String).trim()
+            : 'New alert received');
+
+    if (title.isEmpty && body.isEmpty) {
       return;
     }
 
@@ -51,8 +62,8 @@ class LocalNotificationsService {
                   message.messageId ??
                   notification.hashCode)
               .hashCode,
-      title: notification.title ?? 'Safely',
-      body: notification.body ?? 'New update',
+      title: title,
+      body: body,
       payload: (message.data['alertId'] as String?)?.trim(),
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
@@ -61,6 +72,7 @@ class LocalNotificationsService {
           channelDescription: alertsChannel.description,
           importance: Importance.max,
           priority: Priority.high,
+          groupKey: 'safely_guardian_alerts',
         ),
       ),
     );

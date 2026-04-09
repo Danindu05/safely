@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
-import '../../core/theme/app_colors.dart';
-import '../../repositories/alert_repository.dart';
-import '../../repositories/profile_repository.dart';
-import '../../repositories/safety_repository.dart';
 import '../../core/services/connectivity_service.dart';
 import '../../core/services/emergency_detection_service.dart';
 import '../../core/services/geofence_service.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_tone.dart';
+import '../../core/widgets/app_status_chip.dart';
+import '../../repositories/alert_repository.dart';
+import '../../repositories/profile_repository.dart';
+import '../../repositories/safety_repository.dart';
 import '../../models/user_profile.dart';
 import '../../viewmodels/safemate_shell_viewmodel.dart';
 import 'activity_history_screen.dart';
@@ -192,73 +194,92 @@ class _EmergencyDetectionDialog extends StatelessWidget {
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.pagePadding),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              const Icon(
-                Icons.health_and_safety_outlined,
-                size: 72,
+          child: Center(
+            child: Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxWidth: 520),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
                 color: Colors.white,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Are you safe?',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(
+                  color: AppColors.emergency.withValues(alpha: 0.12),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Unusual activity detected: ${confirmation.event.type.label.toLowerCase()}.',
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(color: Colors.white70),
-              ),
-              const SizedBox(height: 24),
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 10,
+                boxShadow: const <BoxShadow>[
+                  BoxShadow(
+                    color: Color(0x240A1730),
+                    blurRadius: 36,
+                    offset: Offset(0, 18),
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'Sending help in ${remainingSeconds}s',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Center(
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: AppColors.emergencySoft,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: const Icon(
+                        Icons.health_and_safety_outlined,
+                        size: 38,
+                        color: AppColors.emergency,
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Are you safe?',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Unusual activity detected: ${confirmation.event.type.label.toLowerCase()}. If you do nothing, Safely will send help automatically.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Center(
+                    child: AppStatusChip(
+                      label: 'Sending help in ${remainingSeconds}s',
+                      tone: AppTone.danger,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: viewModel.isBusy
+                        ? null
+                        : viewModel.confirmEmergencyDetectionSafe,
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text("I'm Safe"),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: viewModel.isBusy
+                        ? null
+                        : viewModel.sendHelpFromEmergencyDetection,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.emergency,
+                      side: BorderSide(
+                        color: AppColors.emergency.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    icon: const Icon(Icons.sos_outlined),
+                    label: const Text('Send Help'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 28),
-              FilledButton.icon(
-                onPressed: viewModel.isBusy
-                    ? null
-                    : viewModel.confirmEmergencyDetectionSafe,
-                icon: const Icon(Icons.check_circle_outline),
-                label: const Text("I'm Safe"),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: viewModel.isBusy
-                    ? null
-                    : viewModel.sendHelpFromEmergencyDetection,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.white70),
-                ),
-                icon: const Icon(Icons.sos_outlined),
-                label: const Text('Send Help'),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -276,48 +297,63 @@ class _CheckInPromptCard extends StatelessWidget {
     final Duration remaining =
         viewModel.checkInPromptRemaining ?? Duration.zero;
 
-    return Card(
-      color: AppColors.safe.withValues(alpha: 0.08),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              'Are you safe?',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tap once to confirm. If there is no response, guardians are notified automatically.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: viewModel.isBusy
-                        ? null
-                        : viewModel.respondToCheckInPrompt,
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text("I'm Safe"),
-                  ),
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.line),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x100A1730),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const AppStatusChip(
+                label: 'Check-in needed',
+                tone: AppTone.warning,
+                compact: true,
+              ),
+              const Spacer(),
+              Text(
+                '${remaining.inSeconds}s',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: AppColors.warning,
+                  fontWeight: FontWeight.w800,
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  '${remaining.inSeconds}s',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppColors.warning,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Are you safe?',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Tap once to confirm. If there is no response, guardians are notified automatically.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: viewModel.isBusy
+                ? null
+                : viewModel.respondToCheckInPrompt,
+            icon: const Icon(Icons.check_circle_outline),
+            label: const Text("I'm Safe"),
+          ),
+        ],
       ),
     );
   }

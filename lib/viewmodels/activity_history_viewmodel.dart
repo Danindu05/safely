@@ -6,7 +6,7 @@ import '../models/safety_checkin.dart';
 import '../repositories/alert_repository.dart';
 import 'base_viewmodel.dart';
 
-enum HistoryFilter { all, alerts, checkins, logs }
+enum HistoryFilter { all, alerts, checkins, battery, route, geofence, events }
 
 class ActivityHistoryViewModel extends BaseViewModel {
   ActivityHistoryViewModel({

@@ -9,6 +9,7 @@ class SafelyMap extends StatelessWidget {
   const SafelyMap({
     super.key,
     required this.center,
+    this.controller,
     this.zoom = 14,
     this.markers = const <Marker>[],
     this.circles = const <CircleMarker>[],
@@ -17,6 +18,7 @@ class SafelyMap extends StatelessWidget {
   });
 
   final LatLng center;
+  final MapController? controller;
   final double zoom;
   final List<Marker> markers;
   final List<CircleMarker> circles;
@@ -33,6 +35,7 @@ class SafelyMap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FlutterMap(
+      mapController: controller,
       key: ValueKey<String>(
         '${center.latitude}_${center.longitude}_${zoom}_${markers.length}_${circles.length}_${polylines.length}',
       ),

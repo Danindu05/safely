@@ -117,10 +117,16 @@ exports.sendGuardianAlert = onDocumentCreated(
       return;
     }
 
+    const notificationContent = buildNotificationContent(
+      alertType,
+      safemateName,
+      alert,
+    );
+
     const message = {
       notification: {
-        title: "\uD83D\uDEA8 Emergency Alert",
-        body: `${safemateName} triggered an alert`,
+        title: notificationContent.title,
+        body: notificationContent.body,
       },
       data: {
         alertId,
@@ -202,5 +208,57 @@ function notificationsEnabledForAlert(settings, alertType) {
       return valueOrDefault("checkInNotificationsEnabled");
     default:
       return true;
+  }
+}
+
+function buildNotificationContent(alertType, safemateName, alert) {
+  switch (alertType) {
+    case "sos":
+      return {
+        title: `Emergency Alert — ${safemateName} triggered SOS`,
+        body: "Immediate attention may be needed.",
+      };
+    case "low_battery":
+      return {
+        title: `Low Battery Alert — ${safemateName}'s battery is critical`,
+        body: typeof alert.description === "string" && alert.description.trim() ?
+          alert.description.trim() :
+          "Battery is critically low and last location was shared.",
+      };
+    case "geofence":
+      return {
+        title: `Unsafe Zone Alert — ${safemateName} entered a flagged area`,
+        body: typeof alert.description === "string" && alert.description.trim() ?
+          alert.description.trim() :
+          "Location may need attention.",
+      };
+    case "missed_checkin":
+      return {
+        title: `Missed Check-in — ${safemateName} did not respond`,
+        body: typeof alert.description === "string" && alert.description.trim() ?
+          alert.description.trim() :
+          "A scheduled safety confirmation was missed.",
+      };
+    case "manual_checkin":
+      return {
+        title: `Check-in Update — ${safemateName} checked in`,
+        body: typeof alert.description === "string" && alert.description.trim() ?
+          alert.description.trim() :
+          "A reassurance update is available.",
+      };
+    case "route_deviation":
+      return {
+        title: `Route Alert — ${safemateName} may have gone off route`,
+        body: typeof alert.description === "string" && alert.description.trim() ?
+          alert.description.trim() :
+          "Journey monitoring noticed a major route change.",
+      };
+    default:
+      return {
+        title: `Safely Alert — ${safemateName} needs attention`,
+        body: typeof alert.description === "string" && alert.description.trim() ?
+          alert.description.trim() :
+          "Open Safely to review the latest alert.",
+      };
   }
 }

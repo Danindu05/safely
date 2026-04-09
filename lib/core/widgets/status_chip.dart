@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_tone.dart';
+import 'app_status_chip.dart';
 
 class StatusChip extends StatelessWidget {
   const StatusChip({super.key, required this.label, required this.color});
@@ -9,29 +11,32 @@ class StatusChip extends StatelessWidget {
   final Color color;
 
   factory StatusChip.safe(String label) {
-    return const StatusChip(label: 'Safe', color: AppColors.safe);
+    return StatusChip(label: label, color: AppColors.safe);
   }
 
   factory StatusChip.monitoring(String label) {
-    return const StatusChip(label: 'Monitoring', color: AppColors.warning);
+    return StatusChip(label: label, color: AppColors.warning);
   }
 
   factory StatusChip.emergency(String label) {
-    return const StatusChip(
-      label: 'Emergency active',
-      color: AppColors.emergency,
-    );
+    return StatusChip(label: label, color: AppColors.emergency);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Chip(
-      avatar: Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      ),
-      label: Text(label),
-    );
+    return AppStatusChip(label: label, tone: _toneForColor(color));
+  }
+
+  AppTone _toneForColor(Color value) {
+    if (value == AppColors.emergency) {
+      return AppTone.danger;
+    }
+    if (value == AppColors.warning) {
+      return AppTone.warning;
+    }
+    if (value == AppColors.safe || value == AppColors.green) {
+      return AppTone.safe;
+    }
+    return AppTone.neutral;
   }
 }

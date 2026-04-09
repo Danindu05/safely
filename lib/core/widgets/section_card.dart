@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_section_header.dart';
+
 class SectionCard extends StatelessWidget {
   const SectionCard({
     super.key,
@@ -7,52 +9,33 @@ class SectionCard extends StatelessWidget {
     this.subtitle,
     this.trailing,
     required this.child,
+    this.backgroundColor,
+    this.padding = const EdgeInsets.all(20),
   });
 
   final String? title;
   final String? subtitle;
   final Widget? trailing;
   final Widget child;
+  final Color? backgroundColor;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-
     return Card(
+      color: backgroundColor,
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: padding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             if (title != null || subtitle != null || trailing != null)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        if (title != null)
-                          Text(
-                            title!,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        if (subtitle != null) ...<Widget>[
-                          const SizedBox(height: 4),
-                          Text(
-                            subtitle!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (trailing case final Widget trailingWidget) trailingWidget,
-                ],
+              AppSectionHeader(
+                title: title ?? '',
+                subtitle: subtitle,
+                trailing: trailing,
+                compact: true,
               ),
             if (title != null || subtitle != null || trailing != null)
               const SizedBox(height: 16),

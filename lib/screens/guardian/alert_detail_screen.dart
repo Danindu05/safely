@@ -9,7 +9,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_tone.dart';
 import '../../core/utils/date_time_formatter.dart';
+import '../../core/widgets/alert_type_badge.dart';
+import '../../core/widgets/app_info_banner.dart';
+import '../../core/widgets/app_stat_card.dart';
+import '../../core/widgets/app_status_chip.dart';
+import '../../core/widgets/emergency_header_card.dart';
 import '../../core/widgets/primary_action_button.dart';
 import '../../core/widgets/safely_map.dart';
 import '../../core/widgets/section_card.dart';
@@ -84,13 +90,11 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
   }
 
   Future<void> _callContact(String phone) async {
-    final Uri uri = Uri.parse('tel:$phone');
-    await launchUrl(uri);
+    await launchUrl(Uri.parse('tel:$phone'));
   }
 
   Future<void> _messageContact(BuildContext context, String phone) async {
-    final Uri uri = Uri.parse('sms:$phone');
-    final bool launched = await launchUrl(uri);
+    final bool launched = await launchUrl(Uri.parse('sms:$phone'));
     if (launched || !context.mounted) {
       return;
     }
@@ -143,7 +147,13 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
           final String phone = profile?.emergencyContactPhone ?? '';
           final bool isHandling =
               alert?.acknowledgedBy == widget.guardianId ||
-              alert?.status.name == 'acknowledged';
+              alert?.status == AlertStatus.acknowledged;
+
+          if (alert == null && viewModel.errorMessage == null) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
 
           return Scaffold(
             appBar: AppBar(title: const Text('Alert detail')),
@@ -151,134 +161,271 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
               padding: const EdgeInsets.all(AppConstants.pagePadding),
               children: <Widget>[
                 if (alert != null)
-                  SectionCard(
+                  EmergencyHeaderCard(
                     title: alert.title,
-                    subtitle: DateTimeFormatter.formatShort(alert.timestamp),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(alert.description),
-                        const SizedBox(height: 8),
-                        Text('Status: ${alert.status.label}'),
-                        if (alert.acknowledgedAt != null) ...<Widget>[
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.safe.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Text(
-                              alert.acknowledgedBy == widget.guardianId
-                                  ? 'You marked this as handled at ${DateTimeFormatter.formatShort(alert.acknowledgedAt!)}.'
-                                  : 'A guardian marked this as handled at ${DateTimeFormatter.formatShort(alert.acknowledgedAt!)}.',
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                    subtitle:
+                        '${profile?.name ?? 'Safemate'} • ${DateTimeFormatter.formatShort(alert.timestamp)}',
+                    badge: AlertTypeBadge(type: alert.type),
+                    statusLabel: alert.status.label,
+                    statusTone: _toneForAlertStatus(alert.status),
+                    isEmergency:
+                        alert.status == AlertStatus.active ||
+                        (profile?.isEmergencyActive ?? false),
+                    trailing:
+                        (alert.status == AlertStatus.active ||
+                            (profile?.isEmergencyActive ?? false))
+                        ? const AppStatusChip(
+                            label: 'Emergency',
+                            tone: AppTone.danger,
+                            compact: true,
+                          )
+                        : null,
                   ),
-                const SizedBox(height: 16),
-                if (profile != null)
+                if (alert != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: <Widget>[
+                      AppStatCard(
+                        label: 'Battery',
+                        value: alert.batteryLevel == null
+                            ? '--'
+                            : '${alert.batteryLevel}%',
+                        icon: Icons.battery_5_bar_rounded,
+                        tone: _batteryTone(alert.batteryLevel),
+                        expanded: true,
+                      ),
+                      const SizedBox(width: 12),
+                      AppStatCard(
+                        label: 'Location',
+                        value:
+                            alert.locationLat == null ||
+                                alert.locationLng == null
+                            ? 'Unavailable'
+                            : 'Shared',
+                        icon: Icons.location_on_outlined,
+                        tone:
+                            alert.locationLat == null ||
+                                alert.locationLng == null
+                            ? AppTone.neutral
+                            : AppTone.info,
+                        helper:
+                            alert.locationLat == null ||
+                                alert.locationLng == null
+                            ? 'No coordinates were attached'
+                            : '${alert.locationLat!.toStringAsFixed(5)}, ${alert.locationLng!.toStringAsFixed(5)}',
+                        expanded: true,
+                      ),
+                      const SizedBox(width: 12),
+                      AppStatCard(
+                        label: 'Response',
+                        value: isHandling ? 'Handled' : alert.status.label,
+                        icon: isHandling
+                            ? Icons.task_alt
+                            : Icons.priority_high_rounded,
+                        tone: isHandling
+                            ? AppTone.info
+                            : _toneForAlertStatus(alert.status),
+                        helper: _alertContextLabel(alert.type),
+                        expanded: true,
+                      ),
+                    ],
+                  ),
+                ],
+                if (profile != null) ...<Widget>[
+                  const SizedBox(height: 16),
                   SectionCard(
-                    title: profile.name,
+                    title: 'Safemate',
                     subtitle: profile.email,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text('Battery: ${profile.batteryLevel ?? '--'}%'),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Emergency contact: ${profile.emergencyContactName}',
-                        ),
-                        const SizedBox(height: 6),
-                        Text(profile.emergencyContactPhone),
-                      ],
-                    ),
-                  ),
-                if (medical != null) ...<Widget>[
-                  const SizedBox(height: 16),
-                  SectionCard(
-                    title: 'Medical info',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text('Blood group: ${medical.bloodGroup}'),
-                        const SizedBox(height: 6),
-                        Text('Allergies: ${medical.allergies}'),
-                        const SizedBox(height: 6),
-                        Text('Conditions: ${medical.medicalConditions}'),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                if (alert?.locationLat != null && alert?.locationLng != null)
-                  SectionCard(
-                    title: 'Location',
-                    child: SizedBox(
-                      height: 220,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(
-                          AppConstants.cardRadius - 8,
-                        ),
-                        child: SafelyMap(
-                          center: LatLng(
-                            alert!.locationLat!,
-                            alert.locationLng!,
-                          ),
-                          zoom: 15,
-                          markers: <Marker>[
-                            Marker(
-                              point: LatLng(
-                                alert.locationLat!,
-                                alert.locationLng!,
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _InfoValue(
+                                label: 'Name',
+                                value: profile.name,
                               ),
-                              width: 44,
-                              height: 44,
-                              child: const Icon(
-                                Icons.place,
-                                color: Colors.red,
-                                size: 32,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _InfoValue(
+                                label: 'Emergency contact',
+                                value: profile.emergencyContactName.isEmpty
+                                    ? 'Not added'
+                                    : profile.emergencyContactName,
                               ),
                             ),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 12),
+                        _InfoValue(
+                          label: 'Contact number',
+                          value: phone.isEmpty ? 'Not added' : phone,
+                        ),
+                      ],
                     ),
                   ),
-                if (alert?.locationLat != null && alert?.locationLng != null)
+                ],
+                if (alert != null) ...<Widget>[
                   const SizedBox(height: 16),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: phone.isEmpty
-                            ? null
-                            : () => _callContact(phone),
-                        icon: const Icon(Icons.call_outlined),
-                        label: const Text('Call'),
-                      ),
+                  SectionCard(
+                    title: 'Response actions',
+                    subtitle:
+                        'Use the fastest path to reach the Safemate or coordinate with others.',
+                    child: Column(
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: phone.isEmpty
+                                    ? null
+                                    : () => _callContact(phone),
+                                icon: const Icon(Icons.call_outlined),
+                                label: const Text('Call'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: phone.isEmpty
+                                    ? null
+                                    : () => _messageContact(context, phone),
+                                icon: const Icon(Icons.message_outlined),
+                                label: const Text('Message'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        PrimaryActionButton(
+                          label: isHandling
+                              ? "You're handling this"
+                              : 'I am handling this',
+                          icon: Icons.task_alt,
+                          onPressed: isHandling
+                              ? null
+                              : viewModel.acknowledgeHandling,
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: phone.isEmpty
-                            ? null
-                            : () => _messageContact(context, phone),
-                        icon: const Icon(Icons.message_outlined),
-                        label: const Text('Message'),
-                      ),
+                  ),
+                ],
+                if (alert?.locationLat != null &&
+                    alert?.locationLng != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  SectionCard(
+                    title: 'Location',
+                    subtitle: 'Shared with this alert',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        SizedBox(
+                          height: 240,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(
+                              AppConstants.cardRadius - 8,
+                            ),
+                            child: SafelyMap(
+                              center: LatLng(
+                                alert!.locationLat!,
+                                alert.locationLng!,
+                              ),
+                              zoom: 15,
+                              markers: <Marker>[
+                                Marker(
+                                  point: LatLng(
+                                    alert.locationLat!,
+                                    alert.locationLng!,
+                                  ),
+                                  width: 44,
+                                  height: 44,
+                                  child: const Icon(
+                                    Icons.place,
+                                    color: AppColors.emergency,
+                                    size: 32,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Coordinates: ${alert.locationLat!.toStringAsFixed(5)}, ${alert.locationLng!.toStringAsFixed(5)}',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
+                if (medical != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  SectionCard(
+                    title: 'Medical information',
+                    subtitle:
+                        'Key emergency details Guardians may need quickly.',
+                    child: Column(
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _InfoValue(
+                                label: 'Blood group',
+                                value: medical.bloodGroup.isEmpty
+                                    ? 'Not added'
+                                    : medical.bloodGroup,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _InfoValue(
+                                label: 'Emergency contact',
+                                value: medical.emergencyContactName.isEmpty
+                                    ? 'Not added'
+                                    : medical.emergencyContactName,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _InfoValue(
+                          label: 'Allergies',
+                          value: medical.allergies.isEmpty
+                              ? 'No allergies listed'
+                              : medical.allergies,
+                        ),
+                        const SizedBox(height: 12),
+                        _InfoValue(
+                          label: 'Medical conditions',
+                          value: medical.medicalConditions.isEmpty
+                              ? 'No conditions listed'
+                              : medical.medicalConditions,
+                        ),
+                        const SizedBox(height: 12),
+                        _InfoValue(
+                          label: 'Emergency notes',
+                          value: medical.emergencyNotes.isEmpty
+                              ? 'No emergency notes'
+                              : medical.emergencyNotes,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 if ((alert?.audioUrl ?? '').isNotEmpty) ...<Widget>[
                   const SizedBox(height: 16),
                   SectionCard(
                     title: 'Emergency audio',
+                    subtitle: _audioDuration == Duration.zero
+                        ? 'Preparing playback'
+                        : 'Ready to review',
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
@@ -299,14 +446,22 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
                               ),
                             ),
                             const SizedBox(width: 12),
-                            Text(
-                              _audioDuration == Duration.zero
-                                  ? 'Loading duration...'
-                                  : '${_formatAudioDuration(_audioPosition)} / ${_formatAudioDuration(_audioDuration)}',
+                            Expanded(
+                              child: Text(
+                                _audioDuration == Duration.zero
+                                    ? 'Loading duration...'
+                                    : '${_formatAudioDuration(_audioPosition)} / ${_formatAudioDuration(_audioDuration)}',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         Slider(
                           value: _audioDuration.inMilliseconds == 0
                               ? 0
@@ -324,27 +479,63 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
                     ),
                   ),
                 ],
-                if (viewModel.errorMessage != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  Text(
-                    viewModel.errorMessage!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                if (alert != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  SectionCard(
+                    title: 'Timeline',
+                    subtitle: 'How this alert has progressed so far',
+                    child: Column(
+                      children: <Widget>[
+                        _TimelineInfoRow(
+                          icon: Icons.fiber_manual_record,
+                          title: 'Created',
+                          value: DateTimeFormatter.formatShort(alert.timestamp),
+                        ),
+                        if (alert.acknowledgedAt != null) ...<Widget>[
+                          const SizedBox(height: 12),
+                          _TimelineInfoRow(
+                            icon: Icons.task_alt,
+                            title: 'Acknowledged',
+                            value:
+                                '${DateTimeFormatter.formatShort(alert.acknowledgedAt!)}${alert.acknowledgedBy == widget.guardianId ? ' by you' : ''}',
+                          ),
+                        ],
+                        if (alert.resolvedAt != null) ...<Widget>[
+                          const SizedBox(height: 12),
+                          _TimelineInfoRow(
+                            icon: alert.canceledByUser
+                                ? Icons.undo
+                                : Icons.check_circle_outline,
+                            title: alert.canceledByUser
+                                ? 'Canceled'
+                                : 'Resolved',
+                            value: DateTimeFormatter.formatShort(
+                              alert.resolvedAt!,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],
-                if (viewModel.infoMessage != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  Text(viewModel.infoMessage!),
+                if (viewModel.errorMessage != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  AppInfoBanner(
+                    title: 'Alert detail status',
+                    message: viewModel.errorMessage!,
+                    icon: Icons.error_outline,
+                    tone: AppTone.danger,
+                  ),
                 ],
-                const SizedBox(height: 16),
-                PrimaryActionButton(
-                  label: isHandling
-                      ? "You're handling this"
-                      : 'I am handling this',
-                  icon: isHandling ? Icons.task_alt : Icons.task_alt,
-                  onPressed: isHandling ? null : viewModel.acknowledgeHandling,
-                ),
+                if (viewModel.infoMessage != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  AppInfoBanner(
+                    title: 'Alert detail update',
+                    message: viewModel.infoMessage!,
+                    icon: Icons.info_outline,
+                    tone: AppTone.info,
+                  ),
+                ],
               ],
             ),
           );
@@ -352,6 +543,119 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
       ),
     );
   }
+}
+
+class _InfoValue extends StatelessWidget {
+  const _InfoValue({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+}
+
+class _TimelineInfoRow extends StatelessWidget {
+  const _TimelineInfoRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+AppTone _toneForAlertStatus(AlertStatus status) {
+  return switch (status) {
+    AlertStatus.active => AppTone.danger,
+    AlertStatus.acknowledged => AppTone.info,
+    AlertStatus.canceled => AppTone.neutral,
+    AlertStatus.resolved => AppTone.safe,
+  };
+}
+
+AppTone _batteryTone(int? batteryLevel) {
+  if (batteryLevel == null) {
+    return AppTone.neutral;
+  }
+  if (batteryLevel <= 5) {
+    return AppTone.danger;
+  }
+  if (batteryLevel <= 15) {
+    return AppTone.warning;
+  }
+  return AppTone.safe;
+}
+
+String _alertContextLabel(AlertType type) {
+  return switch (type) {
+    AlertType.sos => 'Immediate emergency',
+    AlertType.lowBattery => 'Battery concern',
+    AlertType.geofence => 'Zone-based alert',
+    AlertType.missedCheckin => 'No response',
+    AlertType.manualCheckin => 'Check-in update',
+    AlertType.routeDeviation => 'Route concern',
+  };
 }
 
 String _formatAudioDuration(Duration duration) {

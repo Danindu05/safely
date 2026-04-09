@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_colors.dart';
 import 'section_card.dart';
 
 class EmptyStateCard extends StatelessWidget {
@@ -21,14 +22,23 @@ class EmptyStateCard extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
 
     return SectionCard(
+      backgroundColor: Colors.white,
       child: Column(
         children: <Widget>[
-          Icon(icon, size: 36, color: theme.colorScheme.primary),
-          const SizedBox(height: 12),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(icon, size: 32, color: theme.colorScheme.primary),
+          ),
+          const SizedBox(height: 16),
           Text(
             title,
             style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
             ),
             textAlign: TextAlign.center,
           ),
