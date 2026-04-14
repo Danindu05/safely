@@ -8,13 +8,9 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_tone.dart';
 import '../../core/utils/date_time_formatter.dart';
-import '../../core/widgets/app_info_banner.dart';
-import '../../core/widgets/app_section_header.dart';
 import '../../core/widgets/app_status_chip.dart';
-import '../../core/widgets/empty_state_card.dart';
-import '../../core/widgets/guardian_map_info_card.dart';
+import '../../core/widgets/info_card.dart';
 import '../../core/widgets/safely_map.dart';
-import '../../core/widgets/section_card.dart';
 import '../../models/app_enums.dart';
 import '../../models/geofence_zone.dart';
 import '../../models/live_location.dart';
@@ -44,19 +40,10 @@ class GuardianLiveMapScreen extends StatelessWidget {
   }
 }
 
-class _GuardianLiveMapScreenBody extends StatefulWidget {
+class _GuardianLiveMapScreenBody extends StatelessWidget {
   const _GuardianLiveMapScreenBody({required this.guardianId});
 
   final String guardianId;
-
-  @override
-  State<_GuardianLiveMapScreenBody> createState() =>
-      _GuardianLiveMapScreenBodyState();
-}
-
-class _GuardianLiveMapScreenBodyState
-    extends State<_GuardianLiveMapScreenBody> {
-  final MapController _mapController = MapController();
 
   Future<void> _callContact(String phone) async {
     await launchUrl(Uri.parse('tel:$phone'));
@@ -75,389 +62,406 @@ class _GuardianLiveMapScreenBodyState
   @override
   Widget build(BuildContext context) {
     return Consumer<GuardianLiveMapViewModel>(
-      builder: (BuildContext context, GuardianLiveMapViewModel viewModel, Widget? child) {
-        final UserProfile? selectedSafemate = viewModel.safemates
-            .where(
-              (UserProfile user) => user.id == viewModel.selectedSafemateId,
-            )
-            .firstOrNull;
-        final LiveLocation? liveLocation = viewModel.liveLocation;
-        final _ConnectionHealth connection = _connectionHealth(
-          liveLocation,
-          selectedSafemate?.lastLocationSyncAt,
-        );
-        final List<CircleMarker> geofenceCircles = viewModel.geofenceZones
-            .map(
-              (GeofenceZone zone) => CircleMarker(
-                point: LatLng(zone.lat, zone.lng),
-                radius: zone.radiusMeters,
-                useRadiusInMeter: true,
-                color: zone.type == GeofenceType.unsafe
-                    ? AppColors.emergency.withValues(alpha: 0.12)
-                    : AppColors.safe.withValues(alpha: 0.12),
-                borderColor: zone.type == GeofenceType.unsafe
-                    ? AppColors.emergency
-                    : AppColors.safe,
-                borderStrokeWidth: 2,
-              ),
-            )
-            .toList(growable: false);
-        final List<Marker> markers = <Marker>[
-          ...viewModel.geofenceZones.map(
-            (GeofenceZone zone) => Marker(
-              point: LatLng(zone.lat, zone.lng),
-              width: 40,
-              height: 40,
-              child: Icon(
-                zone.type == GeofenceType.unsafe
-                    ? Icons.warning_amber_rounded
-                    : Icons.home_work_outlined,
-                color: zone.type == GeofenceType.unsafe
-                    ? AppColors.emergency
-                    : AppColors.safe,
-              ),
-            ),
-          ),
-          if (liveLocation != null)
-            Marker(
-              point: LatLng(liveLocation.lat, liveLocation.lng),
-              width: 52,
-              height: 52,
-              child: const Icon(
-                Icons.my_location,
-                color: AppColors.info,
-                size: 34,
-              ),
-            ),
-        ];
-
-        return Scaffold(
-          appBar: AppBar(title: const Text('Guardian live map')),
-          body: ListView(
-            padding: const EdgeInsets.all(AppConstants.pagePadding),
-            children: <Widget>[
-              SectionCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const AppSectionHeader(
-                      title: 'Monitor live location',
-                      subtitle:
-                          'Choose a Safemate to see their latest live session and location freshness.',
-                    ),
-                    if (viewModel.safemates.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        initialValue: viewModel.selectedSafemateId,
-                        items: viewModel.safemates
-                            .map(
-                              (UserProfile user) => DropdownMenuItem<String>(
-                                value: user.id,
-                                child: Text(user.name),
-                              ),
-                            )
-                            .toList(growable: false),
-                        onChanged: (String? value) {
-                          if (value == null) {
-                            return;
-                          }
-                          viewModel.selectSafemate(value);
-                        },
-                        decoration: const InputDecoration(
-                          labelText: 'Selected Safemate',
-                        ),
-                      ),
-                    ],
-                  ],
+      builder:
+          (
+            BuildContext context,
+            GuardianLiveMapViewModel viewModel,
+            Widget? child,
+          ) {
+            final UserProfile? selectedSafemate = _selectedSafemate(
+              viewModel.safemates,
+              viewModel.selectedSafemateId,
+            );
+            final LiveLocation? liveLocation = viewModel.liveLocation;
+            final _ConnectionState connection = _connectionStateFor(
+              liveLocation: liveLocation,
+              lastLocationSyncAt: selectedSafemate?.lastLocationSyncAt,
+            );
+            final LatLng center = liveLocation != null
+                ? LatLng(liveLocation.lat, liveLocation.lng)
+                : _fallbackCenter(viewModel.geofenceZones);
+            final List<CircleMarker> circles = viewModel.geofenceZones
+                .map(
+                  (GeofenceZone zone) => CircleMarker(
+                    point: LatLng(zone.lat, zone.lng),
+                    radius: zone.radiusMeters,
+                    useRadiusInMeter: true,
+                    color: zone.type == GeofenceType.unsafe
+                        ? AppColors.emergency.withValues(alpha: 0.12)
+                        : AppColors.safe.withValues(alpha: 0.12),
+                    borderColor: zone.type == GeofenceType.unsafe
+                        ? AppColors.emergency
+                        : AppColors.safe,
+                    borderStrokeWidth: 2,
+                  ),
+                )
+                .toList(growable: false);
+            final List<Marker> markers = <Marker>[
+              ...viewModel.geofenceZones.map(
+                (GeofenceZone zone) => Marker(
+                  point: LatLng(zone.lat, zone.lng),
+                  width: 40,
+                  height: 40,
+                  child: Icon(
+                    zone.type == GeofenceType.unsafe
+                        ? Icons.warning_amber_rounded
+                        : Icons.home_work_outlined,
+                    color: zone.type == GeofenceType.unsafe
+                        ? AppColors.emergency
+                        : AppColors.safe,
+                  ),
                 ),
               ),
-              const SizedBox(height: 16),
-              if (viewModel.safemates.isEmpty)
-                const EmptyStateCard(
-                  icon: Icons.groups_outlined,
-                  title: 'No linked Safemates yet',
-                  message:
-                      'Once a Safemate links to you, their live monitoring view will appear here.',
-                )
-              else if (selectedSafemate == null)
-                const EmptyStateCard(
-                  icon: Icons.person_search_outlined,
-                  title: 'Choose a Safemate',
-                  message:
-                      'Select a linked Safemate to view live location and safety context.',
-                )
-              else ...<Widget>[
-                if (viewModel.errorMessage != null) ...<Widget>[
-                  AppInfoBanner(
-                    title: 'Map status',
-                    message: viewModel.errorMessage!,
-                    icon: Icons.map_outlined,
-                    tone: AppTone.warning,
+              if (liveLocation != null)
+                Marker(
+                  point: LatLng(liveLocation.lat, liveLocation.lng),
+                  width: 48,
+                  height: 48,
+                  child: const Icon(
+                    Icons.my_location,
+                    color: AppColors.navy,
+                    size: 34,
                   ),
-                  const SizedBox(height: 16),
-                ],
-                if (liveLocation != null)
-                  SizedBox(
-                    height: 420,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(
-                        AppConstants.cardRadius,
-                      ),
-                      child: Stack(
-                        children: <Widget>[
-                          SafelyMap(
-                            controller: _mapController,
-                            center: LatLng(liveLocation.lat, liveLocation.lng),
-                            zoom: 15,
-                            markers: markers,
-                            circles: geofenceCircles,
-                          ),
-                          Positioned(
-                            left: 12,
-                            right: 12,
-                            top: 12,
-                            child: GuardianMapInfoCard(
-                              name: selectedSafemate.name,
-                              statusLabel: selectedSafemate.isEmergencyActive
-                                  ? 'Emergency active'
-                                  : 'Monitoring',
-                              connectionLabel: connection.label,
-                              connectionTone: connection.tone,
-                              batteryLabel: _batteryLabel(
-                                selectedSafemate.batteryLevel,
-                              ),
-                              lastUpdatedLabel: _lastUpdatedLabel(
-                                liveLocation.updatedAt,
-                                connection,
-                              ),
-                              sourceLabel:
-                                  'Source: ${_sourceLabel(liveLocation.source)}',
-                              isEmergencyActive:
-                                  selectedSafemate.isEmergencyActive,
-                            ),
-                          ),
-                          if (viewModel.geofenceZones.isNotEmpty)
-                            Positioned(
-                              left: 12,
-                              right: 12,
-                              bottom: 12,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: <Widget>[
-                                    const AppStatusChip(
-                                      label: 'Safe zone',
-                                      tone: AppTone.safe,
-                                      compact: true,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const AppStatusChip(
-                                      label: 'Unsafe zone',
-                                      tone: AppTone.danger,
-                                      compact: true,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    AppStatusChip(
-                                      label:
-                                          '${viewModel.geofenceZones.length} zone${viewModel.geofenceZones.length == 1 ? '' : 's'} visible',
-                                      tone: AppTone.neutral,
-                                      compact: true,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
+                ),
+            ];
+
+            return Scaffold(
+              body: Stack(
+                children: <Widget>[
+                  Positioned.fill(
+                    child: SafelyMap(
+                      center: center,
+                      zoom: liveLocation == null ? 13 : 15,
+                      markers: markers,
+                      circles: circles,
                     ),
-                  )
-                else ...<Widget>[
-                  GuardianMapInfoCard(
-                    name: selectedSafemate.name,
-                    statusLabel: selectedSafemate.isEmergencyActive
-                        ? 'Emergency active'
-                        : 'No live session',
-                    connectionLabel: connection.label,
-                    connectionTone: connection.tone,
-                    batteryLabel: _batteryLabel(selectedSafemate.batteryLevel),
-                    lastUpdatedLabel:
-                        selectedSafemate.lastLocationSyncAt == null
-                        ? 'Location has not been shared recently.'
-                        : 'Last sync ${DateTimeFormatter.formatRelative(selectedSafemate.lastLocationSyncAt!)}',
-                    sourceLabel: selectedSafemate.isEmergencyActive
-                        ? 'Waiting for live updates from the emergency session.'
-                        : 'Live sharing is currently off.',
-                    isEmergencyActive: selectedSafemate.isEmergencyActive,
                   ),
-                  const SizedBox(height: 16),
-                  EmptyStateCard(
-                    icon: Icons.location_disabled_outlined,
-                    title: selectedSafemate.isEmergencyActive
-                        ? 'Waiting for location updates'
-                        : 'No live location available',
-                    message: selectedSafemate.isEmergencyActive
-                        ? 'An emergency is active, but this device has not received a fresh live location yet.'
-                        : 'The Safemate is not sharing live location right now, or the last update has expired.',
-                  ),
-                ],
-                const SizedBox(height: 16),
-                SectionCard(
-                  title: 'Quick actions',
-                  subtitle:
-                      'Use the fastest path to respond when something changes.',
-                  child: Column(
-                    children: <Widget>[
-                      Row(
+                  SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppConstants.pagePadding),
+                      child: Column(
                         children: <Widget>[
-                          Expanded(
-                            child: FilledButton.tonalIcon(
-                              onPressed: viewModel.latestAlert == null
-                                  ? null
-                                  : () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) => AlertDetailScreen(
-                                            alertId: viewModel.latestAlert!.id,
-                                            guardianId: widget.guardianId,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                              icon: const Icon(Icons.visibility_outlined),
-                              label: const Text('View alert'),
+                          Align(
+                            alignment: Alignment.topLeft,
+                            child: _SafematePickerCard(
+                              safemates: viewModel.safemates,
+                              selectedSafemateId: viewModel.selectedSafemateId,
+                              onSelected: viewModel.selectSafemate,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed:
-                                  (selectedSafemate.emergencyContactPhone)
+                          const SizedBox(height: 12),
+                          if (selectedSafemate != null)
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 180),
+                              child: _LiveInfoCard(
+                                key: ValueKey<String>(selectedSafemate.id),
+                                safemate: selectedSafemate,
+                                liveLocation: liveLocation,
+                                connection: connection,
+                              ),
+                            ),
+                          const Spacer(),
+                          if (selectedSafemate != null)
+                            _MapActionBar(
+                              onCall:
+                                  selectedSafemate.emergencyContactPhone
+                                      .trim()
                                       .isEmpty
                                   ? null
                                   : () => _callContact(
                                       selectedSafemate.emergencyContactPhone,
                                     ),
-                              icon: const Icon(Icons.call_outlined),
-                              label: const Text('Call'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed:
-                                  (selectedSafemate.emergencyContactPhone)
+                              onMessage:
+                                  selectedSafemate.emergencyContactPhone
+                                      .trim()
                                       .isEmpty
                                   ? null
                                   : () => _messageContact(
                                       context,
                                       selectedSafemate.emergencyContactPhone,
                                     ),
-                              icon: const Icon(Icons.message_outlined),
-                              label: const Text('Message'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: liveLocation == null
+                              onViewAlert: viewModel.latestAlert == null
                                   ? null
-                                  : () => _mapController.move(
-                                      LatLng(
-                                        liveLocation.lat,
-                                        liveLocation.lng,
-                                      ),
-                                      15,
-                                    ),
-                              icon: const Icon(Icons.center_focus_strong),
-                              label: const Text('Center map'),
+                                  : () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) => AlertDetailScreen(
+                                            alertId: viewModel.latestAlert!.id,
+                                            guardianId: guardianId,
+                                          ),
+                                        ),
+                                      );
+                                    },
                             ),
-                          ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                if (viewModel.infoMessage != null) ...<Widget>[
-                  const SizedBox(height: 16),
-                  AppInfoBanner(
-                    title: 'Map update',
-                    message: viewModel.infoMessage!,
-                    icon: Icons.info_outline,
-                    tone: AppTone.info,
-                  ),
+                  if (selectedSafemate == null)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(AppConstants.pagePadding),
+                        child: InfoCard(
+                          child: Text(
+                            'Link a Safemate to start monitoring live location.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    )
+                  else if (liveLocation == null)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppConstants.pagePadding),
+                        child: InfoCard(
+                          child: Text(
+                            selectedSafemate.isEmergencyActive
+                                ? 'Waiting for live location updates.'
+                                : 'Live location is not being shared right now.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
-              ],
-            ],
-          ),
-        );
-      },
+              ),
+            );
+          },
     );
   }
 }
 
-_ConnectionHealth _connectionHealth(
-  LiveLocation? liveLocation,
-  DateTime? lastLocationSyncAt,
+class _SafematePickerCard extends StatelessWidget {
+  const _SafematePickerCard({
+    required this.safemates,
+    required this.selectedSafemateId,
+    required this.onSelected,
+  });
+
+  final List<UserProfile> safemates;
+  final String? selectedSafemateId;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (safemates.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 240),
+      child: InfoCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: selectedSafemateId ?? safemates.first.id,
+            isExpanded: true,
+            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+            items: safemates
+                .map(
+                  (UserProfile user) => DropdownMenuItem<String>(
+                    value: user.id,
+                    child: Text(user.name, overflow: TextOverflow.ellipsis),
+                  ),
+                )
+                .toList(growable: false),
+            onChanged: (String? value) {
+              if (value == null) {
+                return;
+              }
+              onSelected(value);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveInfoCard extends StatelessWidget {
+  const _LiveInfoCard({
+    super.key,
+    required this.safemate,
+    required this.liveLocation,
+    required this.connection,
+  });
+
+  final UserProfile safemate;
+  final LiveLocation? liveLocation;
+  final _ConnectionState connection;
+
+  @override
+  Widget build(BuildContext context) {
+    final String updatedText = liveLocation == null
+        ? 'Location unavailable'
+        : 'Updated ${DateTimeFormatter.formatRelative(liveLocation!.updatedAt)}';
+
+    return InfoCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  safemate.name,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+              AppStatusChip(
+                label: safemate.isEmergencyActive ? 'Emergency' : 'Safe',
+                tone: safemate.isEmergencyActive
+                    ? AppTone.danger
+                    : AppTone.safe,
+                compact: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              AppStatusChip(
+                label: connection.label,
+                tone: connection.tone,
+                compact: true,
+              ),
+              AppStatusChip(
+                label: _batteryLabel(safemate.batteryLevel),
+                tone: _batteryTone(safemate.batteryLevel),
+                compact: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            updatedText,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapActionBar extends StatelessWidget {
+  const _MapActionBar({
+    required this.onCall,
+    required this.onMessage,
+    required this.onViewAlert,
+  });
+
+  final VoidCallback? onCall;
+  final VoidCallback? onMessage;
+  final VoidCallback? onViewAlert;
+
+  @override
+  Widget build(BuildContext context) {
+    return InfoCard(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: onCall,
+              icon: const Icon(Icons.call_outlined),
+              label: const Text('Call'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: onMessage,
+              icon: const Icon(Icons.message_outlined),
+              label: const Text('Message'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FilledButton.tonalIcon(
+              onPressed: onViewAlert,
+              icon: const Icon(Icons.visibility_outlined),
+              label: const Text('View Alert'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+UserProfile? _selectedSafemate(
+  List<UserProfile> safemates,
+  String? selectedId,
 ) {
-  final DateTime? basis = liveLocation?.updatedAt ?? lastLocationSyncAt;
-  if (basis == null) {
-    return const _ConnectionHealth(label: 'Unavailable', tone: AppTone.neutral);
+  if (selectedId == null) {
+    return safemates.isEmpty ? null : safemates.first;
+  }
+  for (final UserProfile user in safemates) {
+    if (user.id == selectedId) {
+      return user;
+    }
+  }
+  return safemates.isEmpty ? null : safemates.first;
+}
+
+LatLng _fallbackCenter(List<GeofenceZone> zones) {
+  if (zones.isNotEmpty) {
+    final GeofenceZone zone = zones.first;
+    return LatLng(zone.lat, zone.lng);
+  }
+  return const LatLng(6.9271, 79.8612);
+}
+
+_ConnectionState _connectionStateFor({
+  required LiveLocation? liveLocation,
+  required DateTime? lastLocationSyncAt,
+}) {
+  final DateTime? updatedAt = liveLocation?.updatedAt ?? lastLocationSyncAt;
+  if (updatedAt == null) {
+    return const _ConnectionState(label: 'Unavailable', tone: AppTone.neutral);
   }
 
-  final Duration difference = DateTime.now().difference(basis);
+  final Duration difference = DateTime.now().difference(updatedAt);
   if (difference.inSeconds <= 15) {
-    return const _ConnectionHealth(label: 'Live', tone: AppTone.safe);
+    return const _ConnectionState(label: 'Live', tone: AppTone.safe);
   }
   if (difference.inSeconds <= 60) {
-    return const _ConnectionHealth(label: 'Delayed', tone: AppTone.warning);
+    return const _ConnectionState(label: 'Delayed', tone: AppTone.warning);
   }
-  return const _ConnectionHealth(label: 'Lost', tone: AppTone.danger);
+  return const _ConnectionState(label: 'Lost', tone: AppTone.danger);
 }
 
 String _batteryLabel(int? batteryLevel) {
   if (batteryLevel == null) {
-    return 'Battery unknown';
-  }
-  if (batteryLevel <= 5) {
-    return 'Battery critical • $batteryLevel%';
-  }
-  if (batteryLevel <= 15) {
-    return 'Battery low • $batteryLevel%';
+    return 'Battery --';
   }
   return 'Battery $batteryLevel%';
 }
 
-String _lastUpdatedLabel(DateTime updatedAt, _ConnectionHealth connection) {
-  final String prefix = switch (connection.label) {
-    'Live' => 'Updated',
-    'Delayed' => 'Location delayed',
-    'Lost' => 'Location lost',
-    _ => 'Updated',
-  };
-  return '$prefix ${DateTimeFormatter.formatRelative(updatedAt)}';
+AppTone _batteryTone(int? batteryLevel) {
+  if (batteryLevel == null) {
+    return AppTone.neutral;
+  }
+  if (batteryLevel <= 5) {
+    return AppTone.danger;
+  }
+  if (batteryLevel <= 15) {
+    return AppTone.warning;
+  }
+  return AppTone.neutral;
 }
 
-String _sourceLabel(String source) {
-  return switch (source) {
-    'sos' => 'Emergency SOS',
-    'manual_share' => 'Manual live sharing',
-    'low_battery' => 'Critical battery protection',
-    'route_tracking' => 'Route tracking',
-    _ => source.replaceAll('_', ' '),
-  };
-}
-
-class _ConnectionHealth {
-  const _ConnectionHealth({required this.label, required this.tone});
+class _ConnectionState {
+  const _ConnectionState({required this.label, required this.tone});
 
   final String label;
   final AppTone tone;
-}
-
-extension<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

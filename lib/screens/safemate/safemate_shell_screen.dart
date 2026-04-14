@@ -8,10 +8,13 @@ import '../../core/services/geofence_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_tone.dart';
 import '../../core/widgets/app_status_chip.dart';
+import '../../core/widgets/info_card.dart';
+import '../../core/widgets/primary_button.dart';
+import '../../core/widgets/section_title.dart';
+import '../../models/user_profile.dart';
 import '../../repositories/alert_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/safety_repository.dart';
-import '../../models/user_profile.dart';
 import '../../viewmodels/safemate_shell_viewmodel.dart';
 import 'activity_history_screen.dart';
 import 'guardians_screen.dart';
@@ -61,6 +64,12 @@ class _SafemateShellBodyState extends State<_SafemateShellBody> {
             SafemateShellViewModel shellViewModel,
             Widget? child,
           ) {
+            if (shellViewModel.currentUser.id.trim().isEmpty) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+
             final List<Widget> pages = <Widget>[
               SafemateHomeScreen(
                 profile: shellViewModel.currentUser,
@@ -93,31 +102,7 @@ class _SafemateShellBodyState extends State<_SafemateShellBody> {
             return Scaffold(
               body: Stack(
                 children: <Widget>[
-                  Column(
-                    children: <Widget>[
-                      if (shellViewModel.shouldShowCheckInPrompt)
-                        SafeArea(
-                          bottom: false,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppConstants.pagePadding,
-                              12,
-                              AppConstants.pagePadding,
-                              0,
-                            ),
-                            child: _CheckInPromptCard(
-                              viewModel: shellViewModel,
-                            ),
-                          ),
-                        ),
-                      Expanded(
-                        child: IndexedStack(
-                          index: _currentIndex,
-                          children: pages,
-                        ),
-                      ),
-                    ],
-                  ),
+                  IndexedStack(index: _currentIndex, children: pages),
                   Positioned(
                     top: 0,
                     right: 0,
@@ -129,6 +114,18 @@ class _SafemateShellBodyState extends State<_SafemateShellBody> {
                       ),
                     ),
                   ),
+                  if (emergencyConfirmation == null)
+                    Positioned(
+                      left: AppConstants.pagePadding,
+                      right: AppConstants.pagePadding,
+                      bottom: 96,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: shellViewModel.shouldShowCheckInPrompt
+                            ? _CheckInPromptCard(viewModel: shellViewModel)
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
                   if (emergencyConfirmation != null)
                     Positioned.fill(
                       child: _EmergencyDetectionDialog(
@@ -190,94 +187,72 @@ class _EmergencyDetectionDialog extends StatelessWidget {
     final int remainingSeconds = confirmation.remaining.inSeconds;
 
     return Material(
-      color: AppColors.navyDeep.withValues(alpha: 0.96),
+      color: AppColors.navyDeep.withValues(alpha: 0.82),
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppConstants.pagePadding),
-          child: Center(
-            child: Container(
-              width: double.infinity,
-              constraints: const BoxConstraints(maxWidth: 520),
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(
-                  color: AppColors.emergency.withValues(alpha: 0.12),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppConstants.pagePadding),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: InfoCard(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    const Center(
+                      child: AppStatusChip(
+                        label: 'Safety check',
+                        tone: AppTone.warning,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SectionTitle(
+                      title: 'Are you safe?',
+                      subtitle:
+                          'Unusual activity was detected. Safely will send help automatically if you do not respond.',
+                      centered: true,
+                    ),
+                    const SizedBox(height: 20),
+                    Center(
+                      child: AppStatusChip(
+                        label: 'Sending help in ${remainingSeconds}s',
+                        tone: AppTone.danger,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Text(
+                        confirmation.event.type.label,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    PrimaryButton(
+                      label: "I'm Safe",
+                      icon: Icons.check_circle_outline,
+                      onPressed: viewModel.isBusy
+                          ? null
+                          : viewModel.confirmEmergencyDetectionSafe,
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: viewModel.isBusy
+                          ? null
+                          : viewModel.sendHelpFromEmergencyDetection,
+                      icon: const Icon(Icons.sos_outlined),
+                      label: const Text('Send Help'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.emergency,
+                        side: BorderSide(
+                          color: AppColors.emergency.withValues(alpha: 0.28),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                boxShadow: const <BoxShadow>[
-                  BoxShadow(
-                    color: Color(0x240A1730),
-                    blurRadius: 36,
-                    offset: Offset(0, 18),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Center(
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: AppColors.emergencySoft,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Icon(
-                        Icons.health_and_safety_outlined,
-                        size: 38,
-                        color: AppColors.emergency,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Are you safe?',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Unusual activity detected: ${confirmation.event.type.label.toLowerCase()}. If you do nothing, Safely will send help automatically.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Center(
-                    child: AppStatusChip(
-                      label: 'Sending help in ${remainingSeconds}s',
-                      tone: AppTone.danger,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: viewModel.isBusy
-                        ? null
-                        : viewModel.confirmEmergencyDetectionSafe,
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text("I'm Safe"),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: viewModel.isBusy
-                        ? null
-                        : viewModel.sendHelpFromEmergencyDetection,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.emergency,
-                      side: BorderSide(
-                        color: AppColors.emergency.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    icon: const Icon(Icons.sos_outlined),
-                    label: const Text('Send Help'),
-                  ),
-                ],
               ),
             ),
           ),
@@ -297,61 +272,45 @@ class _CheckInPromptCard extends StatelessWidget {
     final Duration remaining =
         viewModel.checkInPromptRemaining ?? Duration.zero;
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.line),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x100A1730),
-            blurRadius: 18,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return InfoCard(
+      child: Row(
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              const AppStatusChip(
-                label: 'Check-in needed',
-                tone: AppTone.warning,
-                compact: true,
-              ),
-              const Spacer(),
-              Text(
-                '${remaining.inSeconds}s',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppColors.warning,
-                  fontWeight: FontWeight.w800,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const AppStatusChip(
+                  label: 'Check-in needed',
+                  tone: AppTone.warning,
+                  compact: true,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'Are you safe?',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Tap once to confirm. If there is no response, guardians are notified automatically.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                const SizedBox(height: 12),
+                Text(
+                  'Are you safe?',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${remaining.inSeconds}s left to respond.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: viewModel.isBusy
-                ? null
-                : viewModel.respondToCheckInPrompt,
-            icon: const Icon(Icons.check_circle_outline),
-            label: const Text("I'm Safe"),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 132,
+            child: PrimaryButton(
+              label: "I'm Safe",
+              icon: Icons.check_circle_outline,
+              onPressed: viewModel.isBusy
+                  ? null
+                  : viewModel.respondToCheckInPrompt,
+            ),
           ),
         ],
       ),

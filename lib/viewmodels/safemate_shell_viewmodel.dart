@@ -124,6 +124,7 @@ class SafemateShellViewModel extends BaseViewModel {
       if (user != null) {
         _currentUser = user;
         _lastCheckInReferenceAt ??= user.lastSeenAt ?? user.updatedAt;
+        AppLogger.info('Safemate profile loaded for ${user.id}');
         unawaited(_syncEmergencyDetection());
         notifyListeners();
       }
@@ -132,6 +133,7 @@ class SafemateShellViewModel extends BaseViewModel {
       UserSettings? settings,
     ) {
       _settings = settings ?? UserSettings.defaults(_userId);
+      AppLogger.info('Safemate settings loaded for $_userId');
       unawaited(_syncOsGeofences());
       unawaited(_syncEmergencyDetection());
       notifyListeners();

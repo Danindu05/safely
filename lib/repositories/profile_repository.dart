@@ -146,6 +146,10 @@ class FirebaseProfileRepository implements ProfileRepository {
 
           final DocumentSnapshot<Map<String, dynamic>> userSnapshot =
               await transaction.get(userRef);
+          final DocumentSnapshot<Map<String, dynamic>> settingsSnapshot =
+              await transaction.get(settingsRef);
+          final DocumentSnapshot<Map<String, dynamic>> medicalSnapshot =
+              await transaction.get(medicalRef);
           final Map<String, dynamic> existingUser =
               userSnapshot.data() ?? const <String, dynamic>{};
 
@@ -194,14 +198,10 @@ class FirebaseProfileRepository implements ProfileRepository {
                 '',
           }, SetOptions(merge: true));
 
-          final DocumentSnapshot<Map<String, dynamic>> settingsSnapshot =
-              await transaction.get(settingsRef);
           if (!settingsSnapshot.exists) {
             transaction.set(settingsRef, defaultSettings.toMap());
           }
 
-          final DocumentSnapshot<Map<String, dynamic>> medicalSnapshot =
-              await transaction.get(medicalRef);
           if (!medicalSnapshot.exists) {
             transaction.set(medicalRef, emptyProfile.toMap());
           }
