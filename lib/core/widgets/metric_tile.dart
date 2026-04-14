@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_tone.dart';
+import 'app_stat_card.dart';
+
 class MetricTile extends StatelessWidget {
   const MetricTile({
     super.key,
@@ -16,37 +19,12 @@ class MetricTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(icon, color: emphasisColor ?? theme.colorScheme.primary),
-            const SizedBox(height: 12),
-            Text(
-              value,
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: emphasisColor,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
+      child: AppStatCard(
+        label: label,
+        value: value,
+        icon: icon,
+        tone: emphasisColor == null ? AppTone.neutral : AppTone.info,
       ),
     );
   }

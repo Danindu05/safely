@@ -70,4 +70,79 @@ class PreferencesService {
       sessionId,
     );
   }
+
+  String? get activeGeofenceZoneId {
+    return _preferences.getString(AppConstants.activeGeofenceZoneIdKey);
+  }
+
+  Future<void> setActiveGeofenceZoneId(String? zoneId) async {
+    if (zoneId == null || zoneId.isEmpty) {
+      await _preferences.remove(AppConstants.activeGeofenceZoneIdKey);
+      return;
+    }
+
+    await _preferences.setString(AppConstants.activeGeofenceZoneIdKey, zoneId);
+  }
+
+  String? get safetyTimerStateJson {
+    return _preferences.getString(AppConstants.safetyTimerStateKey);
+  }
+
+  Future<void> setSafetyTimerStateJson(String? value) async {
+    if (value == null || value.isEmpty) {
+      await _preferences.remove(AppConstants.safetyTimerStateKey);
+      return;
+    }
+
+    await _preferences.setString(AppConstants.safetyTimerStateKey, value);
+  }
+
+  String? get routeTrackingStateJson {
+    return _preferences.getString(AppConstants.routeTrackingStateKey);
+  }
+
+  Future<void> setRouteTrackingStateJson(String? value) async {
+    if (value == null || value.isEmpty) {
+      await _preferences.remove(AppConstants.routeTrackingStateKey);
+      return;
+    }
+
+    await _preferences.setString(AppConstants.routeTrackingStateKey, value);
+  }
+
+  String? get backgroundCheckInPromptStartedAt {
+    return _preferences.getString(
+      AppConstants.backgroundCheckInPromptStartedAtKey,
+    );
+  }
+
+  Future<void> setBackgroundCheckInPromptStartedAt(String? value) async {
+    if (value == null || value.isEmpty) {
+      await _preferences.remove(
+        AppConstants.backgroundCheckInPromptStartedAtKey,
+      );
+      return;
+    }
+
+    await _preferences.setString(
+      AppConstants.backgroundCheckInPromptStartedAtKey,
+      value,
+    );
+  }
+
+  String? get pendingGeofenceEventJson {
+    return _preferences.getString(AppConstants.pendingGeofenceEventJsonKey);
+  }
+
+  Future<void> setPendingGeofenceEventJson(String? value) async {
+    if (value == null || value.isEmpty) {
+      await _preferences.remove(AppConstants.pendingGeofenceEventJsonKey);
+      return;
+    }
+
+    await _preferences.setString(
+      AppConstants.pendingGeofenceEventJsonKey,
+      value,
+    );
+  }
 }

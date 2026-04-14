@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/app_tone.dart';
 import '../../core/utils/date_time_formatter.dart';
+import '../../core/utils/event_ui_mapper.dart';
+import '../../core/widgets/alert_type_badge.dart';
+import '../../core/widgets/app_status_chip.dart';
 import '../../core/widgets/empty_state_card.dart';
-import '../../core/widgets/section_card.dart';
+import '../../core/widgets/timeline_event_tile.dart';
 import '../../models/app_enums.dart';
 import '../../repositories/alert_repository.dart';
 import '../../viewmodels/guardian_alerts_viewmodel.dart';
@@ -51,15 +55,31 @@ class _GuardianAlertsScreenBody extends StatelessWidget {
                       icon: Icons.notifications_off_outlined,
                       title: 'No alerts yet',
                       message:
-                          'SOS, battery, geofence, and check-in alerts will appear here.',
+                          'SOS, battery, geofence, route, and check-in alerts will appear here.',
                     )
                   else
                     ...viewModel.alerts.map(
                       (alert) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(
-                            AppConstants.cardRadius,
+                        child: TimelineEventTile(
+                          icon: EventUiMapper.iconForAlertType(alert.type),
+                          title: alert.title,
+                          subtitle: alert.description,
+                          timestamp: DateTimeFormatter.formatShort(
+                            alert.timestamp,
+                          ),
+                          tone: EventUiMapper.toneForAlertType(alert.type),
+                          badge: AlertTypeBadge(
+                            type: alert.type,
+                            compact: true,
+                          ),
+                          statusLabel: alert.status.label,
+                          trailing: AppStatusChip(
+                            label: DateTimeFormatter.formatRelative(
+                              alert.timestamp,
+                            ),
+                            tone: AppTone.neutral,
+                            compact: true,
                           ),
                           onTap: () {
                             Navigator.of(context).push(
@@ -71,22 +91,6 @@ class _GuardianAlertsScreenBody extends StatelessWidget {
                               ),
                             );
                           },
-                          child: SectionCard(
-                            title: alert.title,
-                            subtitle: DateTimeFormatter.formatShort(
-                              alert.timestamp,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  '${alert.type.label} • ${alert.status.label}',
-                                ),
-                                const SizedBox(height: 8),
-                                Text(alert.description),
-                              ],
-                            ),
-                          ),
                         ),
                       ),
                     ),

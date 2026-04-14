@@ -7,6 +7,9 @@ import 'app_shell.dart';
 import 'core/constants/app_constants.dart';
 import 'core/services/app_dependencies.dart';
 import 'core/services/connectivity_service.dart';
+import 'core/services/emergency_detection_service.dart';
+import 'core/services/geofence_service.dart';
+import 'core/services/notification_intent_service.dart';
 import 'core/services/permissions_service.dart';
 import 'core/services/preferences_service.dart';
 import 'core/theme/app_theme.dart';
@@ -51,6 +54,15 @@ class SafelyRoot extends StatelessWidget {
         ),
         Provider<ConnectivityService>.value(
           value: dependencies.connectivityService,
+        ),
+        Provider<GeofenceRegistrationService>.value(
+          value: dependencies.geofenceRegistrationService,
+        ),
+        Provider<EmergencyDetectionService>.value(
+          value: dependencies.emergencyDetectionService,
+        ),
+        ChangeNotifierProvider<NotificationIntentService>.value(
+          value: dependencies.notificationIntentService,
         ),
         Provider<AuthRepository>.value(value: dependencies.authRepository),
         Provider<ProfileRepository>.value(

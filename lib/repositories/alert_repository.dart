@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/constants/app_constants.dart';
 import '../core/services/firestore_service.dart';
+import '../core/utils/retry_helper.dart';
 import '../models/activity_log.dart';
 import '../models/safety_alert.dart';
 import '../models/safety_checkin.dart';
@@ -59,15 +61,26 @@ class FirebaseAlertRepository implements AlertRepository {
 
   @override
   Future<SafetyAlert> createAlert(SafetyAlert alert) async {
-    await _firestoreService.alerts.doc(alert.id).set(alert.toMap());
+    await RetryHelper.run<void>(
+      label: 'create alert',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () =>
+          _firestoreService.alerts.doc(alert.id).set(alert.toMap()),
+    );
     return alert;
   }
 
   @override
   Future<void> updateAlert(SafetyAlert alert) {
-    return _firestoreService.alerts
-        .doc(alert.id)
-        .set(alert.toMap(), SetOptions(merge: true));
+    return RetryHelper.run<void>(
+      label: 'update alert',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () {
+        return _firestoreService.alerts
+            .doc(alert.id)
+            .set(alert.toMap(), SetOptions(merge: true));
+      },
+    );
   }
 
   @override
@@ -88,7 +101,12 @@ class FirebaseAlertRepository implements AlertRepository {
 
   @override
   Future<void> createCheckIn(SafetyCheckIn checkIn) {
-    return _firestoreService.checkins.doc(checkIn.id).set(checkIn.toMap());
+    return RetryHelper.run<void>(
+      label: 'create check-in',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () =>
+          _firestoreService.checkins.doc(checkIn.id).set(checkIn.toMap()),
+    );
   }
 
   @override
@@ -107,7 +125,11 @@ class FirebaseAlertRepository implements AlertRepository {
 
   @override
   Future<void> createLog(ActivityLog log) {
-    return _firestoreService.logs.doc(log.id).set(log.toMap());
+    return RetryHelper.run<void>(
+      label: 'create activity log',
+      attempts: AppConstants.maxCriticalWriteAttempts,
+      operation: () => _firestoreService.logs.doc(log.id).set(log.toMap()),
+    );
   }
 
   List<SafetyAlert> _mapAlerts(QuerySnapshot<Map<String, dynamic>> snapshot) {

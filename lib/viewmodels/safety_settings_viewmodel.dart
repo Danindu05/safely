@@ -13,6 +13,7 @@ class SafetySettingsViewModel extends BaseViewModel {
   }) : _authRepository = authRepository,
        _profileRepository = profileRepository,
        _userId = userId {
+    _settings = UserSettings.defaults(_userId);
     _subscription = _profileRepository.watchSettings(_userId).listen((
       UserSettings? settings,
     ) {
@@ -30,12 +31,17 @@ class SafetySettingsViewModel extends BaseViewModel {
   UserSettings? get settings => _settings;
 
   Future<void> save(UserSettings settings) async {
-    await guard<void>(() => _profileRepository.saveSettings(settings));
-    setInfo('Safety settings saved.');
+    await guard<void>(
+      () => _profileRepository.saveSettings(settings),
+      operationName: 'save safety settings',
+    );
+    if (errorMessage == null) {
+      setInfo('Safety settings saved.');
+    }
   }
 
   Future<void> signOut() async {
-    await guard<void>(_authRepository.signOut);
+    await guard<void>(_authRepository.signOut, operationName: 'sign out');
   }
 
   @override

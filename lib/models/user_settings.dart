@@ -13,6 +13,13 @@ class UserSettings {
     required this.liveLocationEnabled,
     required this.trustedPlaceModeEnabled,
     required this.nightModeMonitoringEnabled,
+    required this.sosNotificationsEnabled,
+    required this.batteryNotificationsEnabled,
+    required this.geofenceNotificationsEnabled,
+    required this.checkInNotificationsEnabled,
+    required this.emergencyDetectionEnabled,
+    required this.fallDetectionEnabled,
+    required this.movementDetectionEnabled,
   });
 
   final String userId;
@@ -26,6 +33,13 @@ class UserSettings {
   final bool liveLocationEnabled;
   final bool trustedPlaceModeEnabled;
   final bool nightModeMonitoringEnabled;
+  final bool sosNotificationsEnabled;
+  final bool batteryNotificationsEnabled;
+  final bool geofenceNotificationsEnabled;
+  final bool checkInNotificationsEnabled;
+  final bool emergencyDetectionEnabled;
+  final bool fallDetectionEnabled;
+  final bool movementDetectionEnabled;
 
   factory UserSettings.defaults(String userId) {
     return UserSettings(
@@ -40,6 +54,13 @@ class UserSettings {
       liveLocationEnabled: true,
       trustedPlaceModeEnabled: false,
       nightModeMonitoringEnabled: false,
+      sosNotificationsEnabled: true,
+      batteryNotificationsEnabled: true,
+      geofenceNotificationsEnabled: true,
+      checkInNotificationsEnabled: true,
+      emergencyDetectionEnabled: true,
+      fallDetectionEnabled: true,
+      movementDetectionEnabled: true,
     );
   }
 
@@ -67,6 +88,20 @@ class UserSettings {
           map[FirestoreFields.trustedPlaceModeEnabled] as bool? ?? false,
       nightModeMonitoringEnabled:
           map[FirestoreFields.nightModeMonitoringEnabled] as bool? ?? false,
+      sosNotificationsEnabled:
+          map[FirestoreFields.sosNotificationsEnabled] as bool? ?? true,
+      batteryNotificationsEnabled:
+          map[FirestoreFields.batteryNotificationsEnabled] as bool? ?? true,
+      geofenceNotificationsEnabled:
+          map[FirestoreFields.geofenceNotificationsEnabled] as bool? ?? true,
+      checkInNotificationsEnabled:
+          map[FirestoreFields.checkInNotificationsEnabled] as bool? ?? true,
+      emergencyDetectionEnabled:
+          map[FirestoreFields.emergencyDetectionEnabled] as bool? ?? true,
+      fallDetectionEnabled:
+          map[FirestoreFields.fallDetectionEnabled] as bool? ?? true,
+      movementDetectionEnabled:
+          map[FirestoreFields.movementDetectionEnabled] as bool? ?? true,
     );
   }
 
@@ -83,6 +118,14 @@ class UserSettings {
       FirestoreFields.liveLocationEnabled: liveLocationEnabled,
       FirestoreFields.trustedPlaceModeEnabled: trustedPlaceModeEnabled,
       FirestoreFields.nightModeMonitoringEnabled: nightModeMonitoringEnabled,
+      FirestoreFields.sosNotificationsEnabled: sosNotificationsEnabled,
+      FirestoreFields.batteryNotificationsEnabled: batteryNotificationsEnabled,
+      FirestoreFields.geofenceNotificationsEnabled:
+          geofenceNotificationsEnabled,
+      FirestoreFields.checkInNotificationsEnabled: checkInNotificationsEnabled,
+      FirestoreFields.emergencyDetectionEnabled: emergencyDetectionEnabled,
+      FirestoreFields.fallDetectionEnabled: fallDetectionEnabled,
+      FirestoreFields.movementDetectionEnabled: movementDetectionEnabled,
     };
   }
 
@@ -97,6 +140,13 @@ class UserSettings {
     bool? liveLocationEnabled,
     bool? trustedPlaceModeEnabled,
     bool? nightModeMonitoringEnabled,
+    bool? sosNotificationsEnabled,
+    bool? batteryNotificationsEnabled,
+    bool? geofenceNotificationsEnabled,
+    bool? checkInNotificationsEnabled,
+    bool? emergencyDetectionEnabled,
+    bool? fallDetectionEnabled,
+    bool? movementDetectionEnabled,
   }) {
     return UserSettings(
       userId: userId,
@@ -116,6 +166,19 @@ class UserSettings {
           trustedPlaceModeEnabled ?? this.trustedPlaceModeEnabled,
       nightModeMonitoringEnabled:
           nightModeMonitoringEnabled ?? this.nightModeMonitoringEnabled,
+      sosNotificationsEnabled:
+          sosNotificationsEnabled ?? this.sosNotificationsEnabled,
+      batteryNotificationsEnabled:
+          batteryNotificationsEnabled ?? this.batteryNotificationsEnabled,
+      geofenceNotificationsEnabled:
+          geofenceNotificationsEnabled ?? this.geofenceNotificationsEnabled,
+      checkInNotificationsEnabled:
+          checkInNotificationsEnabled ?? this.checkInNotificationsEnabled,
+      emergencyDetectionEnabled:
+          emergencyDetectionEnabled ?? this.emergencyDetectionEnabled,
+      fallDetectionEnabled: fallDetectionEnabled ?? this.fallDetectionEnabled,
+      movementDetectionEnabled:
+          movementDetectionEnabled ?? this.movementDetectionEnabled,
     );
   }
 }

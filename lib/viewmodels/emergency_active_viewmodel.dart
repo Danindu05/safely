@@ -34,9 +34,14 @@ class EmergencyActiveViewModel extends BaseViewModel {
   SafetyRuntimeState _runtimeState = const SafetyRuntimeState(
     isLiveSharingActive: false,
     isRecordingActive: false,
+    isAudioUploading: false,
+    audioUploadError: null,
     activeAlertId: null,
     isTrustedPlaceActive: false,
     isNightMonitoringActive: false,
+    activeRouteTracking: null,
+    currentRoutePosition: null,
+    safetyTimer: null,
   );
   SafetyAlert? _alert;
 

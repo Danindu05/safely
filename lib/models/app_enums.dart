@@ -20,7 +20,14 @@ extension UserRoleX on UserRole {
   };
 }
 
-enum AlertType { sos, lowBattery, geofence, missedCheckin, manualCheckin }
+enum AlertType {
+  sos,
+  lowBattery,
+  geofence,
+  missedCheckin,
+  manualCheckin,
+  routeDeviation,
+}
 
 AlertType? alertTypeFromValue(String? value) {
   switch (value) {
@@ -34,6 +41,8 @@ AlertType? alertTypeFromValue(String? value) {
       return AlertType.missedCheckin;
     case 'manual_checkin':
       return AlertType.manualCheckin;
+    case 'route_deviation':
+      return AlertType.routeDeviation;
     default:
       return null;
   }
@@ -46,6 +55,7 @@ extension AlertTypeX on AlertType {
     AlertType.geofence => 'geofence',
     AlertType.missedCheckin => 'missed_checkin',
     AlertType.manualCheckin => 'manual_checkin',
+    AlertType.routeDeviation => 'route_deviation',
   };
 
   String get label => switch (this) {
@@ -54,6 +64,7 @@ extension AlertTypeX on AlertType {
     AlertType.geofence => 'Geofence',
     AlertType.missedCheckin => 'Missed check-in',
     AlertType.manualCheckin => 'Check-in',
+    AlertType.routeDeviation => 'Route deviation',
   };
 }
 
@@ -161,6 +172,13 @@ enum LogEventType {
   liveShareStarted,
   liveShareStopped,
   geofenceEntered,
+  routeDeviation,
+  safetyTimerStarted,
+  safetyTimerCanceled,
+  batteryEmergencyStarted,
+  emergencyDetectionTriggered,
+  emergencyDetectionCanceled,
+  emergencyDetectionAutoSos,
   guardianLinked,
   guardianRemoved,
 }
@@ -185,6 +203,20 @@ LogEventType? logEventTypeFromValue(String? value) {
       return LogEventType.liveShareStopped;
     case 'geofence_entered':
       return LogEventType.geofenceEntered;
+    case 'route_deviation':
+      return LogEventType.routeDeviation;
+    case 'safety_timer_started':
+      return LogEventType.safetyTimerStarted;
+    case 'safety_timer_canceled':
+      return LogEventType.safetyTimerCanceled;
+    case 'battery_emergency_started':
+      return LogEventType.batteryEmergencyStarted;
+    case 'emergency_detection_triggered':
+      return LogEventType.emergencyDetectionTriggered;
+    case 'emergency_detection_canceled':
+      return LogEventType.emergencyDetectionCanceled;
+    case 'emergency_detection_auto_sos':
+      return LogEventType.emergencyDetectionAutoSos;
     case 'guardian_linked':
       return LogEventType.guardianLinked;
     case 'guardian_removed':
@@ -205,6 +237,13 @@ extension LogEventTypeX on LogEventType {
     LogEventType.liveShareStarted => 'live_share_started',
     LogEventType.liveShareStopped => 'live_share_stopped',
     LogEventType.geofenceEntered => 'geofence_entered',
+    LogEventType.routeDeviation => 'route_deviation',
+    LogEventType.safetyTimerStarted => 'safety_timer_started',
+    LogEventType.safetyTimerCanceled => 'safety_timer_canceled',
+    LogEventType.batteryEmergencyStarted => 'battery_emergency_started',
+    LogEventType.emergencyDetectionTriggered => 'emergency_detection_triggered',
+    LogEventType.emergencyDetectionCanceled => 'emergency_detection_canceled',
+    LogEventType.emergencyDetectionAutoSos => 'emergency_detection_auto_sos',
     LogEventType.guardianLinked => 'guardian_linked',
     LogEventType.guardianRemoved => 'guardian_removed',
   };
@@ -219,6 +258,13 @@ extension LogEventTypeX on LogEventType {
     LogEventType.liveShareStarted => 'Live sharing started',
     LogEventType.liveShareStopped => 'Live sharing stopped',
     LogEventType.geofenceEntered => 'Geofence event',
+    LogEventType.routeDeviation => 'Route deviation',
+    LogEventType.safetyTimerStarted => 'Safety timer started',
+    LogEventType.safetyTimerCanceled => 'Safety timer canceled',
+    LogEventType.batteryEmergencyStarted => 'Critical battery emergency',
+    LogEventType.emergencyDetectionTriggered => 'Emergency detection',
+    LogEventType.emergencyDetectionCanceled => 'Detection canceled',
+    LogEventType.emergencyDetectionAutoSos => 'Auto SOS',
     LogEventType.guardianLinked => 'Guardian linked',
     LogEventType.guardianRemoved => 'Guardian removed',
   };

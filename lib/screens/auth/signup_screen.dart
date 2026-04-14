@@ -7,6 +7,7 @@ import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/primary_action_button.dart';
 import '../../core/widgets/section_card.dart';
 import '../../repositories/auth_repository.dart';
+import '../../repositories/profile_repository.dart';
 import '../../viewmodels/signup_viewmodel.dart';
 
 class SignupScreen extends StatelessWidget {
@@ -15,7 +16,10 @@ class SignupScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<SignupViewModel>(
-      create: (_) => SignupViewModel(context.read<AuthRepository>()),
+      create: (_) => SignupViewModel(
+        context.read<AuthRepository>(),
+        context.read<ProfileRepository>(),
+      ),
       child: const _SignupScreenBody(),
     );
   }

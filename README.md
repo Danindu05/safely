@@ -20,20 +20,24 @@ Implemented in this phase:
 - Guardian linking by Guardian UID
 - SOS alert creation in Firestore
 - Live emergency/manual location sharing through Realtime Database
-- FCM token capture and foreground notification handling scaffold
+- FCM token capture, foreground handling, and Cloud Functions push fanout
 - Low battery alert creation on device
-- Manual safety check-ins
+- Critical battery emergency mode with live location handoff
+- Manual and timed safety check-ins, with WorkManager-backed background checks
+- On-device fall, phone-drop, sudden-stop, and abnormal movement detection with confirmation before SOS
+- Hidden triple-tap panic trigger for manual silent SOS activation
 - Audio recording during emergency with Firebase Storage upload
+- Route tracking with OSRM road-aware routing and straight-line fallback
 - Geofence setup with OpenStreetMap via `flutter_map`
+- Android OS-level geofence registration with app-side fallback checks
 - Trusted place mode using safe geofence zones
 - Night mode monitoring with overnight missed-check-in alerts
+- Enforced notification category settings for SOS, battery, geofence/route, and check-ins
 - Guardian dashboard, alert list, alert detail, live map, and Safemate profile
 
-Prepared structurally, but not implemented as background-grade features yet:
+Prepared structurally, but not implemented yet:
 
-- Fall detection
 - Power-button panic alternatives
-- Route deviation monitoring
 - Escalation workflows
 - Tamper awareness
 
@@ -167,6 +171,13 @@ lib/
 - `liveLocationEnabled`
 - `trustedPlaceModeEnabled`
 - `nightModeMonitoringEnabled`
+- `sosNotificationsEnabled`
+- `batteryNotificationsEnabled`
+- `geofenceNotificationsEnabled`
+- `checkInNotificationsEnabled`
+- `emergencyDetectionEnabled`
+- `fallDetectionEnabled`
+- `movementDetectionEnabled`
 
 `logs/{logId}`
 
@@ -226,11 +237,24 @@ flutter pub get
 firebase deploy --only firestore:rules,database,storage
 ```
 
-### 5. Run the app
+### 5. Deploy Cloud Functions
+
+The `sendGuardianAlert` function sends FCM notifications when new alerts are created.
+
+```bash
+cd functions
+npm install
+cd ..
+firebase deploy --only functions
+```
+
+### 6. Run the app
 
 ```bash
 flutter run
 ```
+
+For Android geofencing while the app is closed, grant location access with background/always permission when Android offers it. If the OS rejects background geofence registration, Safely keeps the existing app-side geofence checks active as a fallback.
 
 ## How to test the app
 
@@ -285,6 +309,7 @@ This is on-device logic. The easiest manual test path is:
 1. Set low battery thresholds to a high value like `95%`.
 2. Return to the Safemate shell and let the monitor cycle run.
 3. Confirm a low battery alert appears in Firestore and Guardian alerts.
+4. For critical battery behavior, set the critical threshold above the current battery level and confirm `isEmergencyActive` turns true and `live_locations/{userId}` is written.
 
 ### Check-in
 
@@ -292,14 +317,45 @@ This is on-device logic. The easiest manual test path is:
 2. Confirm a `checkins` document is created.
 3. Confirm a resolved `manual_checkin` alert is created.
 4. Check `Activity history`.
+5. For timed reminders, enable check-ins and set a short interval. The app shows an in-app prompt when active, and the Android WorkManager task can create a missed check-in alert if the background prompt is not answered.
+
+### Route tracking
+
+1. Open the Safemate home screen.
+2. Tap `Start route`.
+3. Enter destination latitude/longitude.
+4. Confirm the route preview draws a road-aware path when OSRM is available, or a straight-line fallback when routing fails.
+5. Move more than the configured route threshold away from the path and confirm a `route_deviation` alert is created.
+
+### Emergency detection
+
+1. Open `Safety settings`.
+2. Enable `Emergency detection`, `Fall and impact detection`, and `Abnormal movement detection`.
+3. Keep the Safemate app active.
+4. When Safely detects a suspicious fall/movement pattern, confirm the full-screen `Are you safe?` prompt appears.
+5. Tap `I'm Safe` to cancel or `Send Help` to trigger SOS.
+6. Let the countdown expire to test automatic SOS from `no_response`.
+
+### Silent panic trigger
+
+1. On the Safemate shell, rapidly tap the hidden top-right corner hotspot three times.
+2. Confirm SOS starts without the detection confirmation prompt.
 
 ### Geofence setup
 
 1. Open `Safety settings` -> `Geofence setup`.
 2. Long-press the map to add a safe or unsafe zone.
 3. Enable `Geofencing` in Safety settings.
-4. Return to the Safemate shell and let the monitor cycle run while inside a saved unsafe zone.
-5. Confirm a geofence alert and log entry appear.
+4. Grant background location permission if Android offers it.
+5. Enter a saved unsafe zone.
+6. Confirm a geofence alert appears. OS-level geofencing handles closed-app entry when Android permits it; otherwise the Safemate shell monitor handles it while the app is active.
+
+### Notification settings
+
+1. Open the Guardian notification settings tab.
+2. Turn off a category such as battery alerts.
+3. Trigger that alert type from the Safemate account.
+4. Confirm the alert still exists in Firestore, but `sendGuardianAlert` skips the disabled Guardian notification category.
 
 ### Trusted place mode
 
@@ -320,8 +376,11 @@ This is on-device logic. The easiest manual test path is:
 
 - Detection and trigger logic runs on device.
 - Firebase is used for communication, persistence, and media storage only.
-- Live location, trusted place mode, and geofence monitoring are implemented for foreground/app-active use in this phase.
-- FCM token capture and foreground handling are included; Cloud Functions-based push fanout can be added later without changing the UI architecture.
+- Background monitoring uses Android WorkManager, which is periodic and battery-managed by Android. It improves reliability but is not a constant real-time loop.
+- OS-level geofencing requires Android background location permission. If unavailable, app-side checks continue.
+- Road-aware route tracking uses the public OSRM server and falls back to the local straight-line deviation logic if route generation fails.
+- Emergency detection uses simple threshold-based phone motion checks while the app is active. It intentionally asks for confirmation first to reduce false positives.
+- FCM push fanout is handled by the included Cloud Function and respects Guardian notification category settings.
 
 ## Verification
 
@@ -329,3 +388,4 @@ Locally verified in this workspace:
 
 - `flutter analyze --no-pub`
 - `flutter test`
+- `flutter build apk --debug`

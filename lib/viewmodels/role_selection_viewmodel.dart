@@ -1,5 +1,4 @@
 import '../models/app_enums.dart';
-import '../models/user_settings.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/profile_repository.dart';
 import 'base_viewmodel.dart';
@@ -36,6 +35,11 @@ class RoleSelectionViewModel extends BaseViewModel {
     }
 
     final bool? result = await guard<bool>(() async {
+      await _profileRepository.ensureAccountScaffold(
+        uid: _userId,
+        name: name.trim(),
+        email: _email,
+      );
       await _authRepository.updateDisplayName(name.trim());
       await _profileRepository.setRole(
         uid: _userId,
@@ -43,9 +47,8 @@ class RoleSelectionViewModel extends BaseViewModel {
         email: _email,
         roleValue: _selectedRole!.value,
       );
-      await _profileRepository.saveSettings(UserSettings.defaults(_userId));
       return true;
-    });
+    }, operationName: 'save role');
     return result ?? false;
   }
 }

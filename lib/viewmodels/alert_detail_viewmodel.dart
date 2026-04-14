@@ -77,7 +77,11 @@ class AlertDetailViewModel extends BaseViewModel {
           acknowledgedAt: DateTime.now(),
         ),
       ),
+      operationName: 'acknowledge guardian handling',
     );
+    if (errorMessage == null) {
+      setInfo('Alert marked as handled.');
+    }
   }
 
   @override

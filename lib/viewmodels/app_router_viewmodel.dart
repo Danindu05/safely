@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/constants/app_constants.dart';
+import '../core/utils/app_logger.dart';
 import '../models/app_enums.dart';
 import '../models/auth_account.dart';
 import '../models/medical_profile.dart';
@@ -44,6 +46,7 @@ class AppRouterViewModel extends ChangeNotifier {
   StreamSubscription<AuthAccount?>? _authSubscription;
   StreamSubscription<UserProfile?>? _profileSubscription;
   StreamSubscription<MedicalProfile?>? _medicalSubscription;
+  Timer? _loadingTimer;
 
   bool _isLoading = true;
   AuthAccount? _currentAccount;
@@ -124,15 +127,17 @@ class AppRouterViewModel extends ChangeNotifier {
     _medicalSubscription = null;
 
     if (account == null) {
+      _stopLoadingTimer();
       _isLoading = false;
       notifyListeners();
       return;
     }
 
     _isLoading = true;
+    _startLoadingTimer();
     notifyListeners();
 
-    await _notificationRepository.syncCurrentToken(account.id);
+    unawaited(_bootstrapAuthenticatedAccount(account));
 
     _profileSubscription = _profileRepository
         .watchUserProfile(account.id)
@@ -146,31 +151,82 @@ class AppRouterViewModel extends ChangeNotifier {
             if (profile?.role == UserRole.safemate) {
               _medicalSubscription = _profileRepository
                   .watchMedicalProfile(profile!.id)
-                  .listen((MedicalProfile? medicalProfile) {
-                    _medicalProfile = medicalProfile;
-                    _isLoading = false;
-                    notifyListeners();
-                  });
+                  .listen(
+                    (MedicalProfile? medicalProfile) {
+                      _medicalProfile = medicalProfile;
+                      notifyListeners();
+                    },
+                    onError: (Object error, StackTrace stackTrace) {
+                      AppLogger.error(
+                        'Medical profile stream failed',
+                        error: error,
+                        stackTrace: stackTrace,
+                      );
+                      _medicalProfile = null;
+                      notifyListeners();
+                    },
+                  );
             } else {
               _medicalProfile = null;
-              _isLoading = false;
-              notifyListeners();
             }
 
-            if (profile == null) {
-              _isLoading = false;
-              notifyListeners();
-            }
+            _stopLoadingTimer();
+            _isLoading = false;
+            notifyListeners();
           },
-          onError: (_) {
+          onError: (Object error, StackTrace stackTrace) {
+            AppLogger.error(
+              'Profile stream failed',
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _stopLoadingTimer();
             _isLoading = false;
             notifyListeners();
           },
         );
   }
 
+  Future<void> _bootstrapAuthenticatedAccount(AuthAccount account) async {
+    try {
+      await _profileRepository.ensureAccountScaffold(
+        uid: account.id,
+        name: account.fallbackName,
+        email: account.email,
+      );
+      await _notificationRepository.syncCurrentToken(account.id);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Authenticated bootstrap failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  void _startLoadingTimer() {
+    _loadingTimer?.cancel();
+    _loadingTimer = Timer(
+      const Duration(seconds: AppConstants.routeLoadingTimeoutSeconds),
+      () {
+        if (!_isLoading) {
+          return;
+        }
+        AppLogger.warning('Router loading timed out. Falling back to route.');
+        _isLoading = false;
+        notifyListeners();
+      },
+    );
+  }
+
+  void _stopLoadingTimer() {
+    _loadingTimer?.cancel();
+    _loadingTimer = null;
+  }
+
   @override
   void dispose() {
+    _stopLoadingTimer();
     _authSubscription?.cancel();
     _profileSubscription?.cancel();
     _medicalSubscription?.cancel();

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 
@@ -24,8 +26,24 @@ class FirebaseErrorMapper {
       return error.message ?? 'Authentication failed. Please try again.';
     }
 
+    if (error is FirebaseException) {
+      switch (error.code) {
+        case 'unavailable':
+        case 'network-request-failed':
+          return 'Network error. Check the connection and try again.';
+        case 'permission-denied':
+          return 'You do not have permission to complete that action.';
+      }
+
+      return error.message ?? 'Could not sync your data. Please try again.';
+    }
+
     if (error is PlatformException) {
       return error.message ?? 'Device permission or service error.';
+    }
+
+    if (error is TimeoutException) {
+      return error.message ?? 'This is taking longer than expected. Try again.';
     }
 
     if (error is FormatException) {

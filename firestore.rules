@@ -33,12 +33,19 @@ service cloud.firestore {
       return request.resource.data.id == resource.data.id
         && request.resource.data.email == resource.data.email
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.role == resource.data.role;
+        && (
+          request.resource.data.role == resource.data.role
+          || (
+            !('role' in resource.data)
+            && request.resource.data.role in ['safemate', 'guardian']
+          )
+        );
     }
 
     function selfUserUpdateKeysAllowed() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
         'name',
+        'role',
         'guardianIds',
         'safemateIds',
         'updatedAt',
@@ -103,7 +110,10 @@ service cloud.firestore {
       allow create: if isSelf(userId)
         && request.resource.data.id == request.auth.uid
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.role in ['safemate', 'guardian'];
+        && (
+          !('role' in request.resource.data)
+          || request.resource.data.role in ['safemate', 'guardian']
+        );
       allow get, list: if isSelf(userId) || isGuardianOf(userId) || isSafemateOf(userId);
       allow update: if signedIn()
         && immutableUserFieldsUnchanged()
@@ -143,7 +153,8 @@ service cloud.firestore {
           'low_battery',
           'geofence',
           'missed_checkin',
-          'manual_checkin'
+          'manual_checkin',
+          'route_deviation'
         ]
         && request.resource.data.status in [
           'active',

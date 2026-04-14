@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_tone.dart';
 import '../../core/utils/date_time_formatter.dart';
-import '../../core/widgets/primary_action_button.dart';
-import '../../core/widgets/section_card.dart';
+import '../../core/widgets/app_info_banner.dart';
+import '../../core/widgets/app_status_chip.dart';
+import '../../core/widgets/info_card.dart';
+import '../../core/widgets/primary_button.dart';
+import '../../core/widgets/section_title.dart';
 import '../../models/app_enums.dart';
 import '../../models/user_profile.dart';
 import '../../repositories/alert_repository.dart';
@@ -44,12 +50,12 @@ class _EmergencyActiveScreenBody extends StatelessWidget {
           builder: (BuildContext dialogContext) {
             return AlertDialog(
               title: Text(
-                falseAlarm ? 'Cancel false alarm?' : 'Clear emergency?',
+                falseAlarm ? 'Mark as false alarm?' : 'End emergency?',
               ),
               content: Text(
                 falseAlarm
-                    ? 'Use this only if you sent SOS by mistake.'
-                    : 'Stop live sharing and end the emergency session.',
+                    ? 'Use this only if SOS was sent by mistake.'
+                    : 'This will stop live sharing and close the emergency session.',
               ),
               actions: <Widget>[
                 TextButton(
@@ -87,85 +93,284 @@ class _EmergencyActiveScreenBody extends StatelessWidget {
             Widget? child,
           ) {
             final alert = viewModel.alert;
+            final SafetyRuntimeState runtimeState = viewModel.runtimeState;
 
             return Scaffold(
-              appBar: AppBar(
-                automaticallyImplyLeading: false,
-                title: const Text('Emergency active'),
-              ),
-              body: ListView(
-                padding: const EdgeInsets.all(AppConstants.pagePadding),
-                children: <Widget>[
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: AppColors.emergency,
-                      borderRadius: BorderRadius.circular(
-                        AppConstants.cardRadius,
+              body: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: AppColors.emergency,
+                          borderRadius: BorderRadius.circular(
+                            AppConstants.cardRadius,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            const AppStatusChip(
+                              label: 'Help is being shared',
+                              tone: AppTone.danger,
+                              compact: true,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Emergency Active',
+                              style: Theme.of(context).textTheme.headlineMedium
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Guardians have been alerted.',
+                              style: Theme.of(context).textTheme.bodyLarge
+                                  ?.copyWith(color: Colors.white70),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    child: Column(
-                      children: <Widget>[
-                        const Icon(
-                          Icons.warning_amber_rounded,
-                          size: 54,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Guardians have been alerted',
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            InfoCard(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: <Widget>[
+                                  const SectionTitle(title: 'Emergency status'),
+                                  const SizedBox(height: 16),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: <Widget>[
+                                      _ElapsedChip(startedAt: alert?.timestamp),
+                                      AppStatusChip(
+                                        label: runtimeState.isLiveSharingActive
+                                            ? 'Live sharing on'
+                                            : 'Live sharing off',
+                                        tone: runtimeState.isLiveSharingActive
+                                            ? AppTone.info
+                                            : AppTone.neutral,
+                                        compact: true,
+                                      ),
+                                      AppStatusChip(
+                                        label: runtimeState.isRecordingActive
+                                            ? 'Recording on'
+                                            : 'Recording off',
+                                        tone: runtimeState.isRecordingActive
+                                            ? AppTone.danger
+                                            : AppTone.neutral,
+                                        compact: true,
+                                      ),
+                                      AppStatusChip(
+                                        label: runtimeState.isAudioUploading
+                                            ? 'Uploading audio'
+                                            : 'Audio idle',
+                                        tone: runtimeState.isAudioUploading
+                                            ? AppTone.warning
+                                            : AppTone.neutral,
+                                        compact: true,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    alert == null
+                                        ? 'Preparing emergency details...'
+                                        : DateTimeFormatter.formatShort(
+                                            alert.timestamp,
+                                          ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
                               ),
-                          textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            InfoCard(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  const SectionTitle(title: 'Current details'),
+                                  const SizedBox(height: 16),
+                                  _StatusRow(
+                                    label: 'Alert',
+                                    value: alert?.title ?? 'Preparing alert',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _StatusRow(
+                                    label: 'Status',
+                                    value: alert?.status.label ?? 'Starting',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _StatusRow(
+                                    label: 'Location',
+                                    value: runtimeState.isLiveSharingActive
+                                        ? 'Sharing live location'
+                                        : 'Location not shared yet',
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (runtimeState.audioUploadError !=
+                                null) ...<Widget>[
+                              const SizedBox(height: 16),
+                              AppInfoBanner(
+                                title: 'Audio upload issue',
+                                message: runtimeState.audioUploadError!,
+                                icon: Icons.error_outline,
+                                tone: AppTone.warning,
+                              ),
+                            ],
+                            if (viewModel.errorMessage != null) ...<Widget>[
+                              const SizedBox(height: 16),
+                              AppInfoBanner(
+                                title: 'Emergency update',
+                                message: viewModel.errorMessage!,
+                                icon: Icons.error_outline,
+                                tone: AppTone.danger,
+                              ),
+                            ],
+                            if (viewModel.infoMessage != null) ...<Widget>[
+                              const SizedBox(height: 16),
+                              AppInfoBanner(
+                                title: 'Emergency info',
+                                message: viewModel.infoMessage!,
+                                icon: Icons.info_outline,
+                                tone: AppTone.info,
+                              ),
+                            ],
+                          ],
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Live location is ${viewModel.runtimeState.isLiveSharingActive ? 'active' : 'stopped'} and recording is ${viewModel.runtimeState.isRecordingActive ? 'running' : 'stopped'}.',
-                          style: const TextStyle(color: Colors.white70),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  SectionCard(
-                    title: 'Emergency session details',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(alert?.title ?? 'Preparing emergency alert...'),
-                        if (alert != null) ...<Widget>[
-                          const SizedBox(height: 6),
-                          Text(DateTimeFormatter.formatShort(alert.timestamp)),
-                          const SizedBox(height: 6),
-                          Text('Status: ${alert.status.label}'),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          PrimaryButton(
+                            label: 'End Emergency',
+                            icon: Icons.check_circle_outline,
+                            onPressed: () => _confirmStop(
+                              context,
+                              viewModel,
+                              falseAlarm: false,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: () => _confirmStop(
+                              context,
+                              viewModel,
+                              falseAlarm: true,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.emergency,
+                              side: BorderSide(
+                                color: AppColors.emergency.withValues(
+                                  alpha: 0.28,
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.close),
+                            label: const Text('False Alarm'),
+                          ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  PrimaryActionButton(
-                    label: 'False alarm cancel',
-                    icon: Icons.close,
-                    backgroundColor: Colors.white,
-                    foregroundColor: AppColors.emergency,
-                    onPressed: () =>
-                        _confirmStop(context, viewModel, falseAlarm: true),
-                  ),
-                  const SizedBox(height: 12),
-                  PrimaryActionButton(
-                    label: 'Clear emergency',
-                    icon: Icons.check_circle_outline,
-                    onPressed: () =>
-                        _confirmStop(context, viewModel, falseAlarm: false),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },
     );
   }
+}
+
+class _StatusRow extends StatelessWidget {
+  const _StatusRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: 92,
+          child: Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+        ),
+      ],
+    );
+  }
+}
+
+class _ElapsedChip extends StatelessWidget {
+  const _ElapsedChip({required this.startedAt});
+
+  final DateTime? startedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    if (startedAt == null) {
+      return const AppStatusChip(
+        label: 'Starting',
+        tone: AppTone.warning,
+        compact: true,
+      );
+    }
+
+    return StreamBuilder<int>(
+      stream: Stream<int>.periodic(const Duration(seconds: 1), (int x) => x),
+      builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
+        final Duration elapsed = DateTime.now().difference(startedAt!);
+        return AppStatusChip(
+          label: 'Elapsed ${_formatElapsed(elapsed)}',
+          tone: AppTone.danger,
+          compact: true,
+        );
+      },
+    );
+  }
+}
+
+String _formatElapsed(Duration duration) {
+  final int totalSeconds = duration.inSeconds;
+  final int minutes = totalSeconds ~/ 60;
+  final int seconds = totalSeconds % 60;
+  if (minutes >= 60) {
+    final int hours = minutes ~/ 60;
+    final int remainingMinutes = minutes % 60;
+    return '${hours}h ${remainingMinutes}m';
+  }
+  return '${minutes}m ${seconds.toString().padLeft(2, '0')}s';
 }

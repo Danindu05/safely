@@ -22,11 +22,21 @@ class PermissionsService {
     }
 
     final LocationPermission permission = await Geolocator.requestPermission();
+    if (permission == LocationPermission.whileInUse) {
+      await Permission.locationAlways.request();
+    }
+
+    final LocationPermission effectivePermission =
+        await Geolocator.checkPermission();
     return switch (permission) {
-      LocationPermission.always ||
-      LocationPermission.whileInUse => AppPermissionState.granted,
       LocationPermission.deniedForever => AppPermissionState.permanentlyDenied,
-      _ => AppPermissionState.denied,
+      _ => switch (effectivePermission) {
+        LocationPermission.always ||
+        LocationPermission.whileInUse => AppPermissionState.granted,
+        LocationPermission.deniedForever =>
+          AppPermissionState.permanentlyDenied,
+        _ => AppPermissionState.denied,
+      },
     };
   }
 

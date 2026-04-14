@@ -33,7 +33,10 @@ class PrimaryActionButton extends StatelessWidget {
           ? const SizedBox(
               height: 18,
               width: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
             )
           : Icon(icon ?? Icons.arrow_forward),
       label: Text(label),
