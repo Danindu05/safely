@@ -10,7 +10,7 @@ class SectionCard extends StatelessWidget {
     this.trailing,
     required this.child,
     this.backgroundColor,
-    this.padding = const EdgeInsets.all(20),
+    this.padding = const EdgeInsets.all(16),
   });
 
   final String? title;

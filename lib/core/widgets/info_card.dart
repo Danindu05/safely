@@ -6,7 +6,7 @@ class InfoCard extends StatelessWidget {
   const InfoCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(20),
+    this.padding = const EdgeInsets.all(16),
     this.backgroundColor,
   });
 
@@ -23,11 +23,12 @@ class InfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: backgroundColor ?? Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x0E0A1730),
-            blurRadius: 22,
-            offset: Offset(0, 10),
+            color: Color(0x120A1730),
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
         ],
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_tone.dart';
 import '../../core/utils/date_time_formatter.dart';
 import '../../core/utils/event_ui_mapper.dart';
@@ -80,8 +81,30 @@ class _ActivityHistoryScreenBody extends StatelessWidget {
                             return Padding(
                               padding: const EdgeInsets.only(right: 8),
                               child: ChoiceChip(
-                                label: Text(_filterLabel(filter)),
+                                label: Text(
+                                  _filterLabel(filter),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                                 selected: viewModel.filter == filter,
+                                showCheckmark: false,
+                                selectedColor: AppColors.navy,
+                                backgroundColor: AppColors.surfaceMuted,
+                                side: BorderSide(
+                                  color: viewModel.filter == filter
+                                      ? AppColors.navy
+                                      : AppColors.line,
+                                ),
+                                labelStyle: TextStyle(
+                                  color: viewModel.filter == filter
+                                      ? Colors.white
+                                      : AppColors.navyDeep,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
                                 onSelected: (_) => viewModel.setFilter(filter),
                               ),
                             );

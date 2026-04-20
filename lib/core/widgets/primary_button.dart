@@ -24,26 +24,41 @@ class PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Widget button = FilledButton.icon(
+    final Color resolvedForeground = foregroundColor ?? Colors.white;
+    final Widget button = FilledButton(
       onPressed: isBusy ? null : onPressed,
       style: FilledButton.styleFrom(
         minimumSize: Size.fromHeight(expanded ? AppConstants.buttonHeight : 52),
         backgroundColor: backgroundColor,
         foregroundColor: foregroundColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
-      icon: isBusy
-          ? const SizedBox(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          if (isBusy)
+            SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                valueColor: AlwaysStoppedAnimation<Color>(resolvedForeground),
               ),
             )
-          : Icon(icon ?? Icons.arrow_forward),
-      label: Text(label),
+          else
+            Icon(icon ?? Icons.arrow_forward, size: 20),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
     );
 
     return AnimatedSwitcher(

@@ -8,6 +8,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_tone.dart';
 import '../../core/utils/date_time_formatter.dart';
+import '../../core/widgets/app_action_button.dart';
 import '../../core/widgets/app_status_chip.dart';
 import '../../core/widgets/info_card.dart';
 import '../../core/widgets/safely_map.dart';
@@ -369,26 +370,27 @@ class _MapActionBar extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Expanded(
-            child: OutlinedButton.icon(
+            child: AppActionButton(
               onPressed: onCall,
-              icon: const Icon(Icons.call_outlined),
-              label: const Text('Call'),
+              icon: Icons.call_outlined,
+              label: 'Call',
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
-            child: OutlinedButton.icon(
+            child: AppActionButton(
               onPressed: onMessage,
-              icon: const Icon(Icons.message_outlined),
-              label: const Text('Message'),
+              icon: Icons.message_outlined,
+              label: 'Message',
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
-            child: FilledButton.tonalIcon(
+            child: AppActionButton(
               onPressed: onViewAlert,
-              icon: const Icon(Icons.visibility_outlined),
-              label: const Text('View Alert'),
+              icon: Icons.visibility_outlined,
+              label: 'View Alert',
+              tone: AppActionButtonTone.tonal,
             ),
           ),
         ],
