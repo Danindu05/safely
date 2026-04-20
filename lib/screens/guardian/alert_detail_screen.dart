@@ -12,6 +12,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_tone.dart';
 import '../../core/utils/date_time_formatter.dart';
 import '../../core/widgets/alert_type_badge.dart';
+import '../../core/widgets/app_action_button.dart';
 import '../../core/widgets/app_status_chip.dart';
 import '../../core/widgets/info_card.dart';
 import '../../core/widgets/primary_button.dart';
@@ -188,6 +189,8 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
                             const SizedBox(height: 16),
                             Text(
                               alert.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.headlineSmall
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
@@ -264,22 +267,22 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
                             Row(
                               children: <Widget>[
                                 Expanded(
-                                  child: OutlinedButton.icon(
+                                  child: AppActionButton(
                                     onPressed: phone.trim().isEmpty
                                         ? null
                                         : () => _callContact(phone),
-                                    icon: const Icon(Icons.call_outlined),
-                                    label: const Text('Call'),
+                                    icon: Icons.call_outlined,
+                                    label: 'Call',
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 12),
                                 Expanded(
-                                  child: OutlinedButton.icon(
+                                  child: AppActionButton(
                                     onPressed: phone.trim().isEmpty
                                         ? null
                                         : () => _messageContact(context, phone),
-                                    icon: const Icon(Icons.message_outlined),
-                                    label: const Text('Message'),
+                                    icon: Icons.message_outlined,
+                                    label: 'Message',
                                   ),
                                 ),
                               ],

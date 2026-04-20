@@ -261,7 +261,12 @@ class _EmergencyActiveScreenBody extends StatelessWidget {
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppConstants.pagePadding,
+                        0,
+                        AppConstants.pagePadding,
+                        AppConstants.pagePadding,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         mainAxisSize: MainAxisSize.min,

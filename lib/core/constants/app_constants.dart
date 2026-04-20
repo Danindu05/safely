@@ -2,8 +2,8 @@ class AppConstants {
   const AppConstants._();
 
   static const String appName = 'Safely';
-  static const double pagePadding = 20;
-  static const double cardRadius = 24;
+  static const double pagePadding = 16;
+  static const double cardRadius = 16;
   static const double buttonHeight = 56;
   static const double sosButtonSize = 220;
   static const int locationUpdateIntervalSeconds = 15;

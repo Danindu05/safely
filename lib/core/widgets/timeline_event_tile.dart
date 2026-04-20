@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../constants/app_constants.dart';
 import '../theme/app_tone.dart';
 import 'app_status_chip.dart';
 
@@ -34,7 +35,7 @@ class TimelineEventTile extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Row(
@@ -59,6 +60,8 @@ class TimelineEventTile extends StatelessWidget {
                     Expanded(
                       child: Text(
                         title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
@@ -94,6 +97,8 @@ class TimelineEventTile extends StatelessWidget {
                   const SizedBox(height: 10),
                   Text(
                     subtitle!,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -110,10 +115,13 @@ class TimelineEventTile extends StatelessWidget {
       return child;
     }
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: child,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+        child: child,
+      ),
     );
   }
 }
