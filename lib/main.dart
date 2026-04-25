@@ -13,6 +13,7 @@ import 'core/services/notification_intent_service.dart';
 import 'core/services/permissions_service.dart';
 import 'core/services/preferences_service.dart';
 import 'core/theme/app_theme.dart';
+import 'core/utils/app_logger.dart';
 import 'firebase_options.dart';
 import 'repositories/alert_repository.dart';
 import 'repositories/auth_repository.dart';
@@ -24,12 +25,18 @@ import 'repositories/safety_repository.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  AppLogger.info(
+    'Background FCM received. '
+    'messageId=${message.messageId ?? 'unknown'} '
+    'alertId=${(message.data['alertId'] as String?)?.trim() ?? 'unknown'}',
+  );
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  AppLogger.info('Firebase initialized and FCM background handler registered.');
 
   final AppDependencies dependencies = await AppDependencies.bootstrap();
 

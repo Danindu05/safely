@@ -7,14 +7,23 @@ class FirebaseMessagingService {
 
   Future<void> configure() async {
     await _messaging.setAutoInitEnabled(true);
+    await _messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
   Future<NotificationSettings> requestPermission() {
-    return _messaging.requestPermission();
+    return _messaging.requestPermission(alert: true, badge: true, sound: true);
   }
 
   Future<String?> getToken() {
     return _messaging.getToken();
+  }
+
+  Future<NotificationSettings> getNotificationSettings() {
+    return _messaging.getNotificationSettings();
   }
 
   Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;

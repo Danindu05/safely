@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../constants/app_constants.dart';
+import '../utils/app_logger.dart';
 import 'notification_intent_service.dart';
 
 class LocalNotificationsService {
@@ -41,6 +42,9 @@ class LocalNotificationsService {
     await _plugin.initialize(
       settings: initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
+        AppLogger.info(
+          'Local notification tapped. payload=${response.payload ?? ''}',
+        );
         _notificationIntentService.queueAlertFromPayload(response.payload);
       },
     );
@@ -49,6 +53,9 @@ class LocalNotificationsService {
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.createNotificationChannel(alertsChannel);
+    AppLogger.info(
+      'Local notifications initialized for channel ${alertsChannel.id}.',
+    );
   }
 
   Future<void> showRemoteMessage(RemoteMessage message) async {
@@ -57,6 +64,9 @@ class LocalNotificationsService {
     final DateTime? previousShownAt = _recentRemoteNotifications[dedupeKey];
     if (previousShownAt != null &&
         now.difference(previousShownAt) < const Duration(seconds: 20)) {
+      AppLogger.info(
+        'Skipping duplicate foreground notification for $dedupeKey.',
+      );
       return;
     }
     _recentRemoteNotifications[dedupeKey] = now;
@@ -75,6 +85,9 @@ class LocalNotificationsService {
             : 'New alert received');
 
     if (title.isEmpty && body.isEmpty) {
+      AppLogger.warning(
+        'Remote message received without visible notification content.',
+      );
       return;
     }
 
@@ -99,6 +112,10 @@ class LocalNotificationsService {
         ),
       ),
     );
+    AppLogger.info(
+      'Foreground local notification shown for alert '
+      '${(message.data['alertId'] as String?)?.trim() ?? message.messageId ?? 'unknown'}.',
+    );
   }
 
   Future<void> showLocalWarning({
@@ -119,6 +136,7 @@ class LocalNotificationsService {
         ),
       ),
     );
+    AppLogger.info('Local warning notification shown: $title');
   }
 
   String _remoteMessageDedupeKey(RemoteMessage message) {
