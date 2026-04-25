@@ -40,9 +40,20 @@ class FirebaseNotificationRepository implements NotificationRepository {
   StreamSubscription<RemoteMessage>? _messageOpenedSubscription;
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
   String? _currentUserId;
+  Future<void>? _initializationFuture;
 
   @override
   Future<void> initialize() async {
+    final Future<void>? existingInitialization = _initializationFuture;
+    if (existingInitialization != null) {
+      return existingInitialization;
+    }
+
+    _initializationFuture = _initializeInternal();
+    return _initializationFuture!;
+  }
+
+  Future<void> _initializeInternal() async {
     try {
       await _messagingService.configure();
       await _messageOpenedSubscription?.cancel();
@@ -123,6 +134,9 @@ class FirebaseNotificationRepository implements NotificationRepository {
       attempts: AppConstants.maxCriticalWriteAttempts,
       operation: _messagingService.getToken,
     );
+    if (token == null || token.trim().isEmpty) {
+      AppLogger.warning('Current FCM token was empty for user $userId.');
+    }
     await RetryHelper.run<void>(
       label: 'sync current FCM token',
       attempts: AppConstants.maxCriticalWriteAttempts,

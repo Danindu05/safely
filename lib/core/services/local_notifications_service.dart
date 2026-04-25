@@ -10,6 +10,8 @@ class LocalNotificationsService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   final NotificationIntentService _notificationIntentService;
+  final Map<String, DateTime> _recentRemoteNotifications = <String, DateTime>{};
+  Future<void>? _initializeFuture;
 
   static const AndroidNotificationChannel alertsChannel =
       AndroidNotificationChannel(
@@ -20,6 +22,16 @@ class LocalNotificationsService {
       );
 
   Future<void> initialize() async {
+    final Future<void>? existingInitialization = _initializeFuture;
+    if (existingInitialization != null) {
+      return existingInitialization;
+    }
+
+    _initializeFuture = _initializeInternal();
+    return _initializeFuture!;
+  }
+
+  Future<void> _initializeInternal() async {
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings initSettings = InitializationSettings(
@@ -40,6 +52,16 @@ class LocalNotificationsService {
   }
 
   Future<void> showRemoteMessage(RemoteMessage message) async {
+    final String dedupeKey = _remoteMessageDedupeKey(message);
+    final DateTime now = DateTime.now();
+    final DateTime? previousShownAt = _recentRemoteNotifications[dedupeKey];
+    if (previousShownAt != null &&
+        now.difference(previousShownAt) < const Duration(seconds: 20)) {
+      return;
+    }
+    _recentRemoteNotifications[dedupeKey] = now;
+    _trimRecentRemoteNotifications(now);
+
     final RemoteNotification? notification = message.notification;
     final String title =
         notification?.title ??
@@ -73,6 +95,7 @@ class LocalNotificationsService {
           importance: Importance.max,
           priority: Priority.high,
           groupKey: 'safely_guardian_alerts',
+          setAsGroupSummary: false,
         ),
       ),
     );
@@ -95,6 +118,29 @@ class LocalNotificationsService {
           priority: Priority.high,
         ),
       ),
+    );
+  }
+
+  String _remoteMessageDedupeKey(RemoteMessage message) {
+    final String alertId = (message.data['alertId'] as String?)?.trim() ?? '';
+    if (alertId.isNotEmpty) {
+      return 'alert:$alertId';
+    }
+
+    final String messageId = (message.messageId ?? '').trim();
+    if (messageId.isNotEmpty) {
+      return 'message:$messageId';
+    }
+
+    final String title = message.notification?.title?.trim() ?? '';
+    final String body = message.notification?.body?.trim() ?? '';
+    return 'fallback:$title|$body';
+  }
+
+  void _trimRecentRemoteNotifications(DateTime now) {
+    _recentRemoteNotifications.removeWhere(
+      (_, DateTime shownAt) =>
+          now.difference(shownAt) > const Duration(minutes: 2),
     );
   }
 }

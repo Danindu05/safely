@@ -47,6 +47,7 @@ class AppRouterViewModel extends ChangeNotifier {
   StreamSubscription<UserProfile?>? _profileSubscription;
   StreamSubscription<MedicalProfile?>? _medicalSubscription;
   Timer? _loadingTimer;
+  String? _activeAccountId;
 
   bool _isLoading = true;
   AuthAccount? _currentAccount;
@@ -117,6 +118,12 @@ class AppRouterViewModel extends ChangeNotifier {
   }
 
   Future<void> _handleAuthChange(AuthAccount? account) async {
+    if (account?.id == _activeAccountId && _profileSubscription != null) {
+      AppLogger.info('Skipping duplicate auth session bootstrap.');
+      return;
+    }
+
+    _activeAccountId = account?.id;
     _currentAccount = account;
     _currentUser = null;
     _medicalProfile = null;
