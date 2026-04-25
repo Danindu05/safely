@@ -55,10 +55,19 @@ class FirebaseNotificationRepository implements NotificationRepository {
 
   Future<void> _initializeInternal() async {
     try {
+      await _localNotificationsService.initialize();
       await _messagingService.configure();
+      await requestPushPermission();
+
       await _messageOpenedSubscription?.cancel();
       _messageOpenedSubscription = _messagingService.onMessageOpenedApp.listen(
-        _notificationIntentService.queueAlertFromRemoteMessage,
+        (RemoteMessage message) {
+          AppLogger.info(
+            'Notification tap opened app for alert '
+            '${(message.data['alertId'] as String?)?.trim() ?? 'unknown'}.',
+          );
+          _notificationIntentService.queueAlertFromRemoteMessage(message);
+        },
         onError: (Object error, StackTrace stackTrace) {
           AppLogger.error(
             'Notification open stream failed',
@@ -72,6 +81,12 @@ class FirebaseNotificationRepository implements NotificationRepository {
         RemoteMessage message,
       ) async {
         try {
+          AppLogger.info(
+            'Foreground FCM received. '
+            'messageId=${message.messageId ?? 'unknown'} '
+            'alertId=${(message.data['alertId'] as String?)?.trim() ?? 'unknown'} '
+            'type=${(message.data['type'] as String?)?.trim() ?? 'unknown'}',
+          );
           final bool shouldShow = await _shouldShowForegroundMessage(message);
           if (!shouldShow) {
             AppLogger.info('Foreground notification suppressed by settings.');
@@ -89,6 +104,10 @@ class FirebaseNotificationRepository implements NotificationRepository {
       final RemoteMessage? initialMessage = await _messagingService
           .getInitialMessage();
       if (initialMessage != null) {
+        AppLogger.info(
+          'App launched from terminated notification for alert '
+          '${(initialMessage.data['alertId'] as String?)?.trim() ?? 'unknown'}.',
+        );
         _notificationIntentService.queueAlertFromRemoteMessage(initialMessage);
       }
     } catch (error, stackTrace) {
@@ -102,16 +121,28 @@ class FirebaseNotificationRepository implements NotificationRepository {
 
   @override
   Future<void> syncCurrentToken(String userId) async {
+    await initialize();
     _currentUserId = userId;
     await _tokenSubscription?.cancel();
     _tokenSubscription = _messagingService.onTokenRefresh.listen(
       (String token) async {
+        final String trimmedToken = token.trim();
+        AppLogger.info('FCM token refreshed for user $userId: $trimmedToken');
+        if (trimmedToken.isEmpty) {
+          AppLogger.warning(
+            'Ignoring empty refreshed FCM token for user $userId.',
+          );
+          return;
+        }
+
         try {
           await RetryHelper.run<void>(
             label: 'sync refreshed FCM token',
             attempts: AppConstants.maxCriticalWriteAttempts,
-            operation: () => _profileRepository.updateFcmToken(userId, token),
+            operation: () =>
+                _profileRepository.updateFcmToken(userId, trimmedToken),
           );
+          AppLogger.info('Refreshed FCM token synced for user $userId.');
         } catch (error, stackTrace) {
           AppLogger.error(
             'Token refresh sync failed',
@@ -129,24 +160,59 @@ class FirebaseNotificationRepository implements NotificationRepository {
       },
     );
 
+    final NotificationSettings settings = await _messagingService
+        .getNotificationSettings();
+    _logPermissionSettings(settings, prefix: 'Current notification permission');
+
+    await _fetchAndPersistCurrentToken(userId);
+  }
+
+  @override
+  Future<NotificationSettings> requestPushPermission() async {
+    final NotificationSettings settings = await _messagingService
+        .requestPermission();
+    _logPermissionSettings(settings);
+
+    final String? userId = _currentUserId;
+    final bool canSyncToken =
+        settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+    if (canSyncToken && userId != null && userId.isNotEmpty) {
+      try {
+        await _fetchAndPersistCurrentToken(userId);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Failed to sync FCM token after permission grant',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+
+    return settings;
+  }
+
+  Future<void> _fetchAndPersistCurrentToken(String userId) async {
     final String? token = await RetryHelper.run<String?>(
       label: 'fetch current FCM token',
       attempts: AppConstants.maxCriticalWriteAttempts,
       operation: _messagingService.getToken,
     );
-    if (token == null || token.trim().isEmpty) {
-      AppLogger.warning('Current FCM token was empty for user $userId.');
+    final String trimmedToken = (token ?? '').trim();
+    if (trimmedToken.isEmpty) {
+      AppLogger.warning(
+        'Current FCM token was empty for user $userId. Skipping Firestore update.',
+      );
+      return;
     }
+    AppLogger.info('Current FCM token for user $userId: $trimmedToken');
+
     await RetryHelper.run<void>(
       label: 'sync current FCM token',
       attempts: AppConstants.maxCriticalWriteAttempts,
-      operation: () => _profileRepository.updateFcmToken(userId, token),
+      operation: () => _profileRepository.updateFcmToken(userId, trimmedToken),
     );
-  }
-
-  @override
-  Future<NotificationSettings> requestPushPermission() {
-    return _messagingService.requestPermission();
+    AppLogger.info('Current FCM token synced for user $userId.');
   }
 
   @override
@@ -186,6 +252,24 @@ class FirebaseNotificationRepository implements NotificationRepository {
         stackTrace: stackTrace,
       );
       return true;
+    }
+  }
+
+  void _logPermissionSettings(
+    NotificationSettings settings, {
+    String prefix = 'Notification permission result',
+  }) {
+    AppLogger.info(
+      '$prefix: '
+      'authorization=${settings.authorizationStatus.name}, '
+      'alert=${settings.alert.name}, '
+      'badge=${settings.badge.name}, '
+      'sound=${settings.sound.name}',
+    );
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      AppLogger.warning(
+        'Notification permission is denied. Remote notifications will not be visible.',
+      );
     }
   }
 }

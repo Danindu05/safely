@@ -272,11 +272,15 @@ class FirebaseProfileRepository implements ProfileRepository {
     return RetryHelper.run<void>(
       label: 'update FCM token',
       attempts: AppConstants.maxCriticalWriteAttempts,
-      operation: () {
-        return _firestoreService.users.doc(uid).set(<String, Object?>{
+      operation: () async {
+        await _firestoreService.users.doc(uid).set(<String, Object?>{
           FirestoreFields.fcmToken: token,
           FirestoreFields.updatedAt: Timestamp.fromDate(DateTime.now()),
         }, SetOptions(merge: true));
+        AppLogger.info(
+          'Saved FCM token for user $uid. '
+          'token=${token == null ? 'null' : token.trim()}',
+        );
       },
     );
   }
