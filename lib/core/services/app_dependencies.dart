@@ -47,7 +47,8 @@ class AppDependencies {
     required this.locationRepository,
     required this.notificationRepository,
     required this.safetyRepository,
-  });
+    required LocalNotificationsService localNotificationsService,
+  }) : _localNotificationsService = localNotificationsService;
 
   final PreferencesService preferencesService;
   final PermissionsService permissionsService;
@@ -62,6 +63,8 @@ class AppDependencies {
   final LocationRepository locationRepository;
   final NotificationRepository notificationRepository;
   final SafetyRepository safetyRepository;
+  final LocalNotificationsService _localNotificationsService;
+  Future<void>? _deferredInitializationFuture;
 
   static Future<AppDependencies> bootstrap() async {
     final SharedPreferences sharedPreferences =
@@ -71,7 +74,6 @@ class AppDependencies {
         NotificationIntentService();
     final LocalNotificationsService localNotificationsService =
         LocalNotificationsService(notificationIntentService);
-    await localNotificationsService.initialize();
 
     final FirebaseAuthService authService = FirebaseAuthService(
       FirebaseAuth.instance,
@@ -138,9 +140,6 @@ class AppDependencies {
       localNotificationsService: localNotificationsService,
     );
 
-    await notificationRepository.initialize();
-    await backgroundMonitoringService.initialize();
-
     return AppDependencies(
       preferencesService: preferencesService,
       permissionsService: permissionsService,
@@ -155,6 +154,25 @@ class AppDependencies {
       locationRepository: locationRepository,
       notificationRepository: notificationRepository,
       safetyRepository: safetyRepository,
+      localNotificationsService: localNotificationsService,
     );
+  }
+
+  Future<void> initializeDeferredServices() async {
+    final Future<void>? existingInitialization = _deferredInitializationFuture;
+    if (existingInitialization != null) {
+      return existingInitialization;
+    }
+
+    _deferredInitializationFuture = _initializeDeferredServicesInternal();
+    return _deferredInitializationFuture!;
+  }
+
+  Future<void> _initializeDeferredServicesInternal() async {
+    await _localNotificationsService.initialize();
+    await Future.wait(<Future<void>>[
+      notificationRepository.initialize(),
+      backgroundMonitoringService.initialize(),
+    ]);
   }
 }

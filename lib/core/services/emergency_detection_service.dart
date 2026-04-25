@@ -71,16 +71,16 @@ class EmergencyDetectionService {
   EmergencyDetectionService();
 
   static const double _gravity = 9.80665;
-  static const double _impactThreshold = _gravity * 2.5;
-  static const double _dropImpactThreshold = _gravity * 3.0;
-  static const double _stillAccelerationDelta = 1.2;
+  static const double _impactThreshold = _gravity * 2.7;
+  static const double _dropImpactThreshold = _gravity * 3.2;
+  static const double _stillAccelerationDelta = 1.0;
   static const double _stillGyroscopeMagnitude = 0.45;
-  static const double _highMotionDelta = 8.0;
-  static const double _highRotationMagnitude = 3.2;
+  static const double _highMotionDelta = 8.8;
+  static const double _highRotationMagnitude = 3.6;
   static const Duration _stillnessAfterImpactWindow = Duration(seconds: 3);
   static const Duration _eventWindow = Duration(seconds: 4);
-  static const Duration _minimumStillnessForFall = Duration(milliseconds: 1800);
-  static const Duration _minimumStillnessForStop = Duration(milliseconds: 1400);
+  static const Duration _minimumStillnessForFall = Duration(seconds: 2);
+  static const Duration _minimumStillnessForStop = Duration(milliseconds: 1600);
 
   final StreamController<EmergencyEvent> _eventController =
       StreamController<EmergencyEvent>.broadcast();
@@ -277,7 +277,7 @@ class EmergencyDetectionService {
   }
 
   void _evaluateAbnormalMovement(DateTime now) {
-    if (!_config.movementDetectionEnabled || _recentSamples.length < 12) {
+    if (!_config.movementDetectionEnabled || _recentSamples.length < 16) {
       return;
     }
 
@@ -293,10 +293,12 @@ class EmergencyDetectionService {
         )
         .length;
     final int directionChanges = _directionChangeCount();
+    final double averageMovementDelta = _averageMovementDelta();
 
     if (highMotionSamples < 8 ||
         highRotationSamples < 5 ||
-        directionChanges < 4) {
+        directionChanges < 4 ||
+        averageMovementDelta < 5.8) {
       return;
     }
 
@@ -309,6 +311,7 @@ class EmergencyDetectionService {
           'highMotionSamples': highMotionSamples,
           'highRotationSamples': highRotationSamples,
           'directionChanges': directionChanges,
+          'averageMovementDelta': averageMovementDelta,
         },
       ),
     );
@@ -399,6 +402,18 @@ class EmergencyDetectionService {
 
   double _magnitude(double x, double y, double z) {
     return math.sqrt(x * x + y * y + z * z);
+  }
+
+  double _averageMovementDelta() {
+    if (_recentSamples.isEmpty) {
+      return 0;
+    }
+
+    final double total = _recentSamples.fold<double>(
+      0,
+      (double value, _MotionSample sample) => value + sample.movementDelta,
+    );
+    return total / _recentSamples.length;
   }
 }
 

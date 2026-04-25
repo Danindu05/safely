@@ -55,6 +55,8 @@ class SafemateShellViewModel extends BaseViewModel {
   Timer? _monitorTimer;
   Timer? _heartbeatTimer;
   Timer? _emergencyConfirmationTimer;
+  Timer? _osGeofenceSyncTimer;
+  Timer? _emergencyDetectionSyncTimer;
 
   UserProfile _currentUser;
   UserSettings? _settings;
@@ -125,7 +127,7 @@ class SafemateShellViewModel extends BaseViewModel {
         _currentUser = user;
         _lastCheckInReferenceAt ??= user.lastSeenAt ?? user.updatedAt;
         AppLogger.info('Safemate profile loaded for ${user.id}');
-        unawaited(_syncEmergencyDetection());
+        _scheduleEmergencyDetectionSync();
         notifyListeners();
       }
     });
@@ -134,15 +136,15 @@ class SafemateShellViewModel extends BaseViewModel {
     ) {
       _settings = settings ?? UserSettings.defaults(_userId);
       AppLogger.info('Safemate settings loaded for $_userId');
-      unawaited(_syncOsGeofences());
-      unawaited(_syncEmergencyDetection());
+      _scheduleOsGeofenceSync();
+      _scheduleEmergencyDetectionSync();
       notifyListeners();
     });
     _geofenceSubscription = _profileRepository.watchGeofences(_userId).listen((
       GeofenceConfig? config,
     ) {
       _geofenceConfig = config;
-      unawaited(_syncOsGeofences());
+      _scheduleOsGeofenceSync();
       notifyListeners();
     });
     _checkInSubscription = _alertRepository.watchCheckIns(_userId).listen((
@@ -202,7 +204,23 @@ class SafemateShellViewModel extends BaseViewModel {
     );
     unawaited(_runMonitors());
     unawaited(_runHeartbeat());
-    unawaited(_syncEmergencyDetection());
+    _scheduleEmergencyDetectionSync();
+  }
+
+  void _scheduleEmergencyDetectionSync() {
+    _emergencyDetectionSyncTimer?.cancel();
+    _emergencyDetectionSyncTimer = Timer(
+      const Duration(milliseconds: 180),
+      () => unawaited(_syncEmergencyDetection()),
+    );
+  }
+
+  void _scheduleOsGeofenceSync() {
+    _osGeofenceSyncTimer?.cancel();
+    _osGeofenceSyncTimer = Timer(
+      const Duration(milliseconds: 220),
+      () => unawaited(_syncOsGeofences()),
+    );
   }
 
   Future<void> _syncEmergencyDetection() async {
@@ -647,6 +665,8 @@ class SafemateShellViewModel extends BaseViewModel {
     _monitorTimer?.cancel();
     _heartbeatTimer?.cancel();
     _emergencyConfirmationTimer?.cancel();
+    _osGeofenceSyncTimer?.cancel();
+    _emergencyDetectionSyncTimer?.cancel();
     unawaited(_emergencyDetectionService.stop());
     super.dispose();
   }

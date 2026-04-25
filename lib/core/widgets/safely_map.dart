@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/app_constants.dart';
 
-class SafelyMap extends StatelessWidget {
+class SafelyMap extends StatefulWidget {
   const SafelyMap({
     super.key,
     required this.center,
@@ -25,6 +25,20 @@ class SafelyMap extends StatelessWidget {
   final List<Polyline> polylines;
   final void Function(LatLng point)? onLongPress;
 
+  @override
+  State<SafelyMap> createState() => _SafelyMapState();
+}
+
+class _SafelyMapState extends State<SafelyMap> {
+  late final MapController _internalController;
+  MapController get _controller => widget.controller ?? _internalController;
+
+  @override
+  void initState() {
+    super.initState();
+    _internalController = MapController();
+  }
+
   Future<void> _openAttribution() {
     return launchUrl(
       Uri.parse(AppConstants.openStreetMapCopyrightUrl),
@@ -35,25 +49,23 @@ class SafelyMap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FlutterMap(
-      mapController: controller,
-      key: ValueKey<String>(
-        '${center.latitude}_${center.longitude}_${zoom}_${markers.length}_${circles.length}_${polylines.length}',
-      ),
+      mapController: _controller,
       options: MapOptions(
-        initialCenter: center,
-        initialZoom: zoom,
-        onLongPress: onLongPress == null
+        initialCenter: widget.center,
+        initialZoom: widget.zoom,
+        onLongPress: widget.onLongPress == null
             ? null
-            : (_, LatLng point) => onLongPress!(point),
+            : (_, LatLng point) => widget.onLongPress!(point),
       ),
       children: <Widget>[
         TileLayer(
           urlTemplate: AppConstants.openStreetMapTileUrl,
           userAgentPackageName: AppConstants.mapUserAgentPackageName,
         ),
-        if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
-        if (circles.isNotEmpty) CircleLayer(circles: circles),
-        if (markers.isNotEmpty) MarkerLayer(markers: markers),
+        if (widget.polylines.isNotEmpty)
+          PolylineLayer(polylines: widget.polylines),
+        if (widget.circles.isNotEmpty) CircleLayer(circles: widget.circles),
+        if (widget.markers.isNotEmpty) MarkerLayer(markers: widget.markers),
         RichAttributionWidget(
           showFlutterMapAttribution: false,
           attributions: <SourceAttribution>[
@@ -65,5 +77,25 @@ class SafelyMap extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant SafelyMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_sameCenter(oldWidget.center, widget.center) &&
+        oldWidget.zoom == widget.zoom) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _controller.move(widget.center, widget.zoom);
+    });
+  }
+
+  bool _sameCenter(LatLng a, LatLng b) {
+    return a.latitude == b.latitude && a.longitude == b.longitude;
   }
 }

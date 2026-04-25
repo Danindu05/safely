@@ -19,7 +19,19 @@ import '../utils/app_logger.dart';
 import 'local_notifications_service.dart';
 
 class BackgroundMonitoringService {
+  Future<void>? _initializeFuture;
+
   Future<void> initialize() async {
+    final Future<void>? existingInitialization = _initializeFuture;
+    if (existingInitialization != null) {
+      return existingInitialization;
+    }
+
+    _initializeFuture = _initializeInternal();
+    return _initializeFuture!;
+  }
+
+  Future<void> _initializeInternal() async {
     try {
       await Workmanager().initialize(safelyBackgroundCallbackDispatcher);
       await Workmanager().registerPeriodicTask(
@@ -31,7 +43,10 @@ class BackgroundMonitoringService {
         constraints: Constraints(networkType: NetworkType.connected),
         existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
       );
-      AppLogger.info('Background safety monitoring registered.');
+      AppLogger.info(
+        'Background safety monitoring registered '
+        'every ${AppConstants.backgroundMonitorIntervalMinimumMinutes} minutes.',
+      );
     } catch (error, stackTrace) {
       AppLogger.error(
         'Background safety monitoring registration failed; in-app timers remain active',
@@ -52,6 +67,7 @@ void safelyBackgroundCallbackDispatcher() {
 Future<bool> _runSafelyBackgroundTask(String taskName) async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
+  AppLogger.info('Background safety task started: $taskName');
 
   try {
     await Firebase.initializeApp(
@@ -124,6 +140,7 @@ Future<bool> _runSafelyBackgroundTask(String taskName) async {
       settings: settings,
       batteryLevel: batteryLevel,
     );
+    AppLogger.info('Background safety task completed: $taskName');
     return true;
   } catch (error, stackTrace) {
     AppLogger.error(
