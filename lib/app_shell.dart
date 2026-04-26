@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,10 +8,10 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/role_selection_screen.dart';
 import 'screens/common/onboarding_screen.dart';
 import 'screens/common/permission_setup_screen.dart';
-import 'screens/common/splash_screen.dart';
 import 'core/utils/app_logger.dart';
 import 'screens/guardian/alert_detail_screen.dart';
 import 'screens/guardian/guardian_shell_screen.dart';
+import 'screens/splash_screen.dart';
 import 'screens/safemate/emergency_active_screen.dart';
 import 'screens/safemate/medical_profile_setup_screen.dart';
 import 'screens/safemate/safemate_shell_screen.dart';
@@ -29,7 +31,22 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   bool _deferredInitializationStarted = false;
+  bool _minimumSplashComplete = false;
   String? _scheduledPendingAlertId;
+  Timer? _minimumSplashTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _minimumSplashTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _minimumSplashComplete = true;
+      });
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -59,10 +76,11 @@ class _AppShellState extends State<AppShell> {
 
   void _handlePendingAlertNavigation(
     BuildContext context,
+    AppRouteState effectiveRouteState,
     AppRouterViewModel router,
     NotificationIntentService notificationIntentService,
   ) {
-    if (router.routeState != AppRouteState.guardianShell) {
+    if (effectiveRouteState != AppRouteState.guardianShell) {
       _scheduledPendingAlertId = null;
       return;
     }
@@ -111,13 +129,18 @@ class _AppShellState extends State<AppShell> {
               NotificationIntentService notificationIntentService,
               Widget? child,
             ) {
+              final AppRouteState effectiveRouteState = _minimumSplashComplete
+                  ? router.routeState
+                  : AppRouteState.splash;
+
               _handlePendingAlertNavigation(
                 context,
+                effectiveRouteState,
                 router,
                 notificationIntentService,
               );
 
-              switch (router.routeState) {
+              switch (effectiveRouteState) {
                 case AppRouteState.splash:
                   return const SplashScreen();
                 case AppRouteState.onboarding:
@@ -152,5 +175,11 @@ class _AppShellState extends State<AppShell> {
             },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _minimumSplashTimer?.cancel();
+    super.dispose();
   }
 }
