@@ -1,14 +1,12 @@
-const {initializeApp} = require("firebase-admin/app");
-const {getFirestore} = require("firebase-admin/firestore");
-const {getMessaging} = require("firebase-admin/messaging");
+const admin = require("firebase-admin");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 
-initializeApp();
+admin.initializeApp();
 
-const firestore = getFirestore();
-const messaging = getMessaging();
+const db = admin.firestore();
+const messaging = admin.messaging();
 const USERS_COLLECTION = "users";
 const SETTINGS_COLLECTION = "settings";
 const ALERTS_CHANNEL_ID = "safely_alerts";
@@ -27,10 +25,17 @@ exports.sendGuardianAlert = onDocumentCreated(
       return;
     }
 
-    const alert = snapshot.data();
+    const alert = snapshot.data() || {};
     const userId = normalizeString(alert.userId);
     const guardianIds = normalizeStringArray(alert.guardianIds);
-    const alertType = normalizeString(alert.type);
+    const alertType = normalizeString(alert.type) || "sos";
+
+    console.log("sendGuardianAlert triggered", {
+      alertId,
+      userId,
+      guardianIds,
+      alertType,
+    });
 
     if (!userId || guardianIds.length === 0) {
       logger.info("Alert skipped because recipients are missing.", {
@@ -42,71 +47,73 @@ exports.sendGuardianAlert = onDocumentCreated(
     }
 
     const safemateName = await loadSafemateName(userId, alertId);
-    const guardianRecipients = await loadGuardianRecipients({
-      alertId,
-      guardianIds,
-      alertType,
-    });
-
-    if (guardianRecipients.length === 0) {
-      logger.info("No guardian notification tokens were available.", {
-        alertId,
-        userId,
-        alertType,
-      });
-      return;
-    }
-
     const notificationContent = buildNotificationContent(
       alertType,
       safemateName,
       alert,
     );
 
-    const results = await Promise.allSettled(
-      guardianRecipients.map((recipient) =>
-        sendPushToGuardian({
-          recipient,
-          alertId,
-          userId,
-          alertType,
-          alert,
-          notificationContent,
-        }),
-      ),
-    );
-
     let successCount = 0;
     let failureCount = 0;
 
-    results.forEach((result, index) => {
-      const recipient = guardianRecipients[index];
-      if (result.status === "fulfilled") {
-        successCount += 1;
-        logger.info("Guardian notification sent.", {
-          alertId,
-          guardianId: recipient.guardianId,
-          token: recipient.token,
-          messageId: result.value,
-        });
-        return;
-      }
+    for (const guardianId of guardianIds) {
+      let token = "";
 
-      failureCount += 1;
-      logger.error("Guardian notification failed.", {
-        alertId,
-        guardianId: recipient.guardianId,
-        token: recipient.token,
-        error: result.reason instanceof Error ?
-          result.reason.message :
-          String(result.reason),
-        code: result.reason && result.reason.code ? result.reason.code : null,
-      });
-    });
+      try {
+        console.log("Loading guardian document from path:", `users/${guardianId}`);
+        const guardianDoc = await db.collection(USERS_COLLECTION).doc(guardianId).get();
+
+        if (!guardianDoc.exists) {
+          console.log("Guardian not found:", guardianId);
+          continue;
+        }
+
+        const guardianData = guardianDoc.data() || {};
+        token = normalizeString(guardianData.fcmToken);
+
+        if (!token) {
+          console.log("No token for guardian:", guardianId);
+          continue;
+        }
+
+        const settings = await loadGuardianSettings(guardianId, alertId);
+        if (!notificationsEnabledForAlert(settings, alertType)) {
+          console.log("Notification category disabled for guardian:", guardianId);
+          continue;
+        }
+
+        console.log("Sending to:", guardianId);
+        console.log("Token:", token);
+
+        const messageId = await messaging.send(
+          buildMessageForToken({
+            token,
+            alertId,
+            userId,
+            alertType,
+            alert,
+            notificationContent,
+          }),
+        );
+
+        successCount += 1;
+        console.log("Notification sent successfully:", {
+          guardianId,
+          messageId,
+        });
+      } catch (error) {
+        failureCount += 1;
+        console.error("Notification send failed for guardian:", guardianId, error);
+
+        if (token && isInvalidTokenError(error)) {
+          await clearGuardianTokenIfUnchanged(guardianId, token);
+        }
+      }
+    }
 
     logger.info("Guardian alert notification batch completed.", {
       alertId,
-      attempted: guardianRecipients.length,
+      attempted: guardianIds.length,
       successCount,
       failureCount,
     });
@@ -122,7 +129,7 @@ exports.sendTestNotification = onCall(async (request) => {
     );
   }
 
-  const userSnapshot = await firestore.collection(USERS_COLLECTION).doc(uid).get();
+  const userSnapshot = await db.collection(USERS_COLLECTION).doc(uid).get();
   if (!userSnapshot.exists) {
     throw new HttpsError(
       "not-found",
@@ -139,6 +146,9 @@ exports.sendTestNotification = onCall(async (request) => {
   }
 
   const name = normalizeString(userSnapshot.get("name")) || "Safely user";
+  console.log("Sending test notification to:", uid);
+  console.log("Token:", token);
+
   const messageId = await messaging.send({
     token,
     notification: {
@@ -176,16 +186,18 @@ async function loadSafemateName(userId, alertId) {
   let safemateName = "A Safemate";
 
   try {
-    const safemateSnapshot =
-      await firestore.collection(USERS_COLLECTION).doc(userId).get();
-    if (safemateSnapshot.exists) {
-      const candidateName = normalizeString(safemateSnapshot.get("name"));
-      if (candidateName) {
-        safemateName = candidateName;
-      }
+    const userSnapshot = await db.collection(USERS_COLLECTION).doc(userId).get();
+    if (!userSnapshot.exists) {
+      console.log("Safemate user document not found:", userId);
+      return safemateName;
+    }
+
+    const candidateName = normalizeString(userSnapshot.get("name"));
+    if (candidateName) {
+      safemateName = candidateName;
     }
   } catch (error) {
-    logger.error("Failed to load Safemate profile for notification body.", {
+    console.error("Failed to load Safemate profile:", {
       alertId,
       userId,
       error: error instanceof Error ? error.message : String(error),
@@ -195,96 +207,21 @@ async function loadSafemateName(userId, alertId) {
   return safemateName;
 }
 
-async function loadGuardianRecipients({alertId, guardianIds, alertType}) {
-  const loadedRecipients = await Promise.all(
-    guardianIds.map(async (guardianId) => {
-      try {
-        const [userSnapshot, settingsSnapshot] = await Promise.all([
-          firestore.collection(USERS_COLLECTION).doc(guardianId).get(),
-          firestore.collection(SETTINGS_COLLECTION).doc(guardianId).get(),
-        ]);
-
-        if (!userSnapshot.exists) {
-          logger.info("Skipping guardian because the user document was not found.", {
-            alertId,
-            guardianId,
-          });
-          return null;
-        }
-
-        const settings = settingsSnapshot.exists ? settingsSnapshot.data() : {};
-        if (!notificationsEnabledForAlert(settings, alertType)) {
-          logger.info("Skipping guardian because notification category is disabled.", {
-            alertId,
-            guardianId,
-            alertType,
-          });
-          return null;
-        }
-
-        const token = normalizeString(userSnapshot.get("fcmToken"));
-        if (!token) {
-          logger.info("Skipping guardian because no FCM token is stored.", {
-            alertId,
-            guardianId,
-          });
-          return null;
-        }
-
-        logger.info("Prepared guardian notification recipient.", {
-          alertId,
-          guardianId,
-          token,
-        });
-
-        return {
-          guardianId,
-          token,
-        };
-      } catch (error) {
-        logger.error("Failed to load guardian profile.", {
-          alertId,
-          guardianId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      }
-    }),
-  );
-
-  return loadedRecipients.filter(Boolean);
-}
-
-async function sendPushToGuardian({
-  recipient,
-  alertId,
-  userId,
-  alertType,
-  alert,
-  notificationContent,
-}) {
-  logger.info("Sending guardian notification.", {
-    alertId,
-    guardianId: recipient.guardianId,
-    token: recipient.token,
-  });
-
+async function loadGuardianSettings(guardianId, alertId) {
   try {
-    return await messaging.send(
-      buildMessageForToken({
-        token: recipient.token,
-        alertId,
-        userId,
-        alertType,
-        alert,
-        notificationContent,
-      }),
-    );
-  } catch (error) {
-    if (isInvalidTokenError(error)) {
-      await clearGuardianTokenIfUnchanged(recipient.guardianId, recipient.token);
+    const settingsSnapshot =
+      await db.collection(SETTINGS_COLLECTION).doc(guardianId).get();
+    if (!settingsSnapshot.exists) {
+      return {};
     }
-    throw error;
+    return settingsSnapshot.data() || {};
+  } catch (error) {
+    console.error("Failed to load guardian settings. Defaulting to enabled.", {
+      alertId,
+      guardianId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {};
   }
 }
 
@@ -326,7 +263,7 @@ function buildMessageForToken({
 
 async function clearGuardianTokenIfUnchanged(guardianId, invalidToken) {
   try {
-    const userRef = firestore.collection(USERS_COLLECTION).doc(guardianId);
+    const userRef = db.collection(USERS_COLLECTION).doc(guardianId);
     const userSnapshot = await userRef.get();
     if (!userSnapshot.exists) {
       return;
@@ -394,44 +331,44 @@ function buildNotificationContent(alertType, safemateName, alert) {
   switch (alertType) {
     case "sos":
       return {
-        title: `Emergency Alert — ${safemateName} triggered SOS`,
-        body: "Immediate attention may be needed.",
+        title: "Emergency Alert",
+        body: `${safemateName} triggered SOS`,
       };
     case "low_battery":
       return {
-        title: `Low Battery Alert — ${safemateName}'s battery is critical`,
+        title: "Low Battery Alert",
         body: normalizeString(alert.description) ||
-          "Battery is critically low and last location was shared.",
+          `${safemateName}'s battery is critical`,
       };
     case "geofence":
       return {
-        title: `Unsafe Zone Alert — ${safemateName} entered a flagged area`,
+        title: "Unsafe Zone Alert",
         body: normalizeString(alert.description) ||
-          "Location may need attention.",
+          `${safemateName} entered a flagged area`,
       };
     case "missed_checkin":
       return {
-        title: `Missed Check-in — ${safemateName} did not respond`,
+        title: "Missed Check-in",
         body: normalizeString(alert.description) ||
-          "A scheduled safety confirmation was missed.",
+          `${safemateName} did not respond`,
       };
     case "manual_checkin":
       return {
-        title: `Check-in Update — ${safemateName} checked in`,
+        title: "Check-in Update",
         body: normalizeString(alert.description) ||
-          "A reassurance update is available.",
+          `${safemateName} checked in`,
       };
     case "route_deviation":
       return {
-        title: `Route Alert — ${safemateName} may have gone off route`,
+        title: "Route Alert",
         body: normalizeString(alert.description) ||
-          "Journey monitoring noticed a major route change.",
+          `${safemateName} may have gone off route`,
       };
     default:
       return {
-        title: `Safely Alert — ${safemateName} needs attention`,
+        title: "Emergency Alert",
         body: normalizeString(alert.description) ||
-          "Open Safely to review the latest alert.",
+          `${safemateName} triggered an alert`,
       };
   }
 }
@@ -449,7 +386,9 @@ function normalizeStringArray(values) {
     return [];
   }
 
-  return [...new Set(values
-    .map((value) => normalizeString(value))
-    .filter((value) => value.length > 0))];
+  return [...new Set(
+    values
+      .map((value) => normalizeString(value))
+      .filter((value) => value.length > 0),
+  )];
 }
