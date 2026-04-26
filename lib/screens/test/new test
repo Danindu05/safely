@@ -1,0 +1,7 @@
+void main() {
+  String name = "abc";
+  int age = 23;
+
+  print("Hello $name");
+  print("Your age is $age");
+}
