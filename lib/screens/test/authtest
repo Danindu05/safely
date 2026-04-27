@@ -1,0 +1,9 @@
+import 'models/user_profile.dart';
+
+// Usage example in another file:
+final user = UserProfile(
+  id: '123',
+  username: 'dev_user',
+  email: 'user@example.com',
+);
+print(user.displayName); // @dev_user
