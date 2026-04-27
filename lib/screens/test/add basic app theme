@@ -1,0 +1,4 @@
+ThemeData(
+  primarySwatch: Colors.red,
+  brightness: Brightness.light,
+);
