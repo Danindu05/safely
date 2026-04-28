@@ -1,0 +1,67 @@
+import 'package:flutter/material.dart';
+
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('About Page'),
+        backgroundColor: Colors.green,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Center(
+              child: Icon(
+                Icons.info,
+                size: 90,
+                color: Colors.green,
+              ),
+            ),
+
+            const SizedBox(height: 25),
+
+            const Text(
+              'About This App',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            const Text(
+              'This is a simple Flutter application created for practice. '
+              'It contains different pages such as Home Page, Profile Page, '
+              'and About Page.',
+              style: TextStyle(fontSize: 16),
+            ),
+
+            const SizedBox(height: 25),
+
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.mobile_friendly),
+                title: const Text('App Type'),
+                subtitle: const Text('Flutter Mobile Application'),
+              ),
+            ),
+
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.code),
+                title: const Text('Language'),
+                subtitle: const Text('Dart'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
