@@ -1,0 +1,1 @@
+class MedicalConstants { // Dropdown data for Medical Profile static const List<String> bloodGroups = [ 'A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-' ]; // Permission Rationales (Onboarding) static const String locationPermissionRationale =  } 
