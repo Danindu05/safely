@@ -1,0 +1,40 @@
+import 'package:flutter/material.dart';
+
+class EmergencyContactsPage extends StatelessWidget {
+  const EmergencyContactsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final contacts = [
+      'Mother - 071 123 4567',
+      'Father - 077 987 6543',
+      'Police - 119',
+      'Ambulance - 1990',
+    ];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Emergency Contacts'),
+        centerTitle: true,
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: contacts.length,
+        itemBuilder: (context, index) {
+          return Card(
+            child: ListTile(
+              leading: const Icon(Icons.contact_phone, color: Colors.red),
+              title: Text(contacts[index]),
+              trailing: IconButton(
+                icon: const Icon(Icons.call),
+                onPressed: () {
+                  // Call action
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
