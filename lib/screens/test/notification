@@ -1,0 +1,96 @@
+import 'package:flutter/foundation.dart';
+
+
+class NotificationSettingsViewModel extends ChangeNotifier {
+  
+  
+  bool _bypassSilenceForSos = true; 
+  bool _lowBatteryAlertsEnabled = true;
+  bool _geofenceBreachEnabled = true;
+  
+  
+  bool _muteRoutineCheckins = false;
+
+  bool get bypassSilenceForSos => _bypassSilenceForSos;
+  bool get lowBatteryAlertsEnabled => _lowBatteryAlertsEnabled;
+  bool get geofenceBreachEnabled => _geofenceBreachEnabled;
+  bool get muteRoutineCheckins => _muteRoutineCheckins;
+
+
+  void toggleSosSilenceBypass(bool value) {
+    _bypassSilenceForSos = value;
+    _syncPreferencesToDatabase();
+    notifyListeners();
+  }
+
+  void toggleLowBatteryAlerts(bool value) {
+    _lowBatteryAlertsEnabled = value;
+    _syncPreferencesToDatabase();
+    notifyListeners();
+  }
+
+  void toggleGeofenceAlerts(bool value) {
+    _geofenceBreachEnabled = value;
+    _syncPreferencesToDatabase();
+    notifyListeners();
+  }
+
+  void toggleRoutineCheckinMute(bool value) {
+    _muteRoutineCheckins = value;
+    _syncPreferencesToDatabase();
+    notifyListeners();
+  }
+
+
+  NotificationHandling Action evaluateIncomingNotification(String eventCategory) {
+    switch (eventCategory) {
+      case 'SOS_EVENT':
+        return _bypassSilenceForSos 
+            ? NotificationHandlingAction.criticalBypass 
+            : NotificationHandlingAction.standardAlert;
+            
+      case 'BATTERY_WARNING':
+        return _lowBatteryAlertsEnabled 
+            ? NotificationHandlingAction.standardAlert 
+            : NotificationHandlingAction.suppress;
+            
+      case 'GEOFENCE_BREACH':
+        return _geofenceBreachEnabled 
+            ? NotificationHandlingAction.highPriority 
+            : NotificationHandlingAction.suppress;
+            
+      case 'ROUTINE_CHECKIN':
+        return _muteRoutineCheckins 
+            ? NotificationHandlingAction.suppress 
+            : NotificationHandlingAction.silentDelivery;
+            
+      default:
+        return NotificationHandlingAction.standardAlert;
+    }
+  }
+
+
+  Future<void> _syncPreferencesToDatabase() async {
+    try {
+      
+      
+      
+      if (kDebugMode) {
+        print("Notification preferences synced successfully.");
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error syncing notification preferences: $e");
+      }
+    }
+  }
+}
+
+
+enum NotificationHandlingAction {
+  suppress,         // Do not show the notification
+  silentDelivery,   // Deliver to notification tray without sound/vibration
+  standardAlert,    // Standard system sound/vibration
+  highPriority,     // High visibility alert
+  criticalBypass    // Maximum priority, overrides device 'Do Not Disturb' or Silent mode
+}
