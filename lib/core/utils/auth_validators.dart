@@ -1,0 +1,1 @@
+class AuthValidators { /// Basic Regex to validate email format static bool isValidEmail(String email) { return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email); } // Password constraints static const int minPasswordLength = 8; static const String defaultGuardianRoleString = 'GUARDIAN'; static const String defaultSafemateRoleString = 'SAFEMATE'; 
