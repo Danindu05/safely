@@ -1,7 +1,7 @@
 # Safely
 
 Safely is an Android-first Flutter + Firebase guardian safety app built with a
-clean MVVM architecture. It supports two roles:
+clean MVVM architecture. It supports two roles :
 
 - `Safemate`: the protected person using SOS, live sharing, check-ins, and medical info
 - `Guardian`: the trusted watcher receiving alerts, live location, and response context
