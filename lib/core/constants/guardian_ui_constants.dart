@@ -1,0 +1,1 @@
+class GuardianUIConstants { // Map Configurations static const double defaultMapZoomLevel = 14.5; static const int mapRefreshRateMs = 5000; // 5 seconds } // Dashboard Styling static const double cardBorderRadius = 12.0; static const double dashboardPadding = 16.0;
