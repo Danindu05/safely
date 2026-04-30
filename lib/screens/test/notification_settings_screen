@@ -1,0 +1,78 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+
+class NotificationSettingsScreen extends StatelessWidget {
+  const NotificationSettingsScreen({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Notification Settings'),
+        elevation: 0,
+      ),
+      body: Consumer<NotificationSettingsViewModel>(
+        builder: (context, viewModel, child) {
+          return ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              _buildSectionHeader(context, 'Critical Alerts', Icons.warning_amber_rounded, Colors.red),
+              const SizedBox(height: 8),
+              
+              SwitchListTile(
+                title: const Text('SOS Event Override'),
+                subtitle: const Text('Bypass device silence/DND for emergency SOS alerts.'),
+                value: viewModel.bypassSilenceForSos,
+                activeColor: Colors.red, 
+                onChanged: (value) => viewModel.toggleSosSilenceBypass(value),
+              ),
+              const Divider(),
+              
+              SwitchListTile(
+                title: const Text('Low Battery Warnings'),
+                subtitle: const Text('Receive alerts when a connected device battery is critically low.'),
+                value: viewModel.lowBatteryAlertsEnabled,
+                onChanged: (value) => viewModel.toggleLowBatteryAlerts(value),
+              ),
+              const Divider(),
+              
+              SwitchListTile(
+                title: const Text('Geofence Breaches'),
+                subtitle: const Text('Get notified immediately if a safe zone is exited.'),
+                value: viewModel.geofenceBreachEnabled,
+                onChanged: (value) => viewModel.toggleGeofenceAlerts(value),
+              ),
+              
+              const SizedBox(height: 32),
+              _buildSectionHeader(context, 'Routine Updates', Icons.info_outline, Colors.blue),
+              const SizedBox(height: 8),
+              
+              SwitchListTile(
+                title: const Text('Mute Routine Check-ins'),
+                subtitle: const Text('Deliver check-in updates silently to the notification tray.'),
+                value: viewModel.muteRoutineCheckins,
+                onChanged: (value) => viewModel.toggleRoutineCheckinMute(value),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon, Color iconColor) {
+    return Row(
+      children: [
+        Icon(icon, color: iconColor),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+}
